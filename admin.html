@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>短链接配置与加盐哈希管理工具 - ShortLink Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <style>
+    :root {
+      --bg: #0f141c;
+      --card-bg: #161d2a;
+      --card-border: #263346;
+      --card-header: #1c2536;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --diff-add-bg: rgba(34, 197, 94, 0.12);
+      --diff-add-text: #86efac;
+      --diff-del-bg: rgba(239, 68, 68, 0.12);
+      --diff-del-text: #fca5a5;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1.5rem;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--card-border);
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .brand-logo {
+      width: 44px;
+      height: 44px;
+      background: #1e293b;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+    }
+
+    .brand-title h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #f8fafc;
+    }
+
+    .brand-title p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.55rem 1.1rem;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--card-border);
+      background: #1e293b;
+      color: var(--text);
+      font-family: inherit;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: #27354a;
+      border-color: #3b4d66;
+    }
+
+    .btn-primary {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #38bdf8;
+    }
+
+    .btn-primary:hover {
+      background: #0369a1;
+      border-color: #7dd3fc;
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.12);
+      color: #fca5a5;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.22);
+    }
+
+    .btn-sm {
+      padding: 0.35rem 0.7rem;
+      font-size: 0.8rem;
+    }
+
+    .mdui-icon {
+      font-size: 1.2rem;
+      line-height: 1;
+      vertical-align: middle;
+    }
+
+    .grid-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    @media (max-width: 960px) {
+      .grid-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 1.5rem;
+    }
+
+    .card-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: #f8fafc;
+    }
+
+    .form-group {
+      margin-bottom: 1.15rem;
+    }
+
+    .form-group label {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.84rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 0.62rem 0.85rem;
+      background: #0d121a;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .hash-preview {
+      background: #0d121a;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin-top: 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    .hash-preview .label {
+      color: var(--primary);
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-bottom: 0.3rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .hash-val {
+      color: #cbd5e1;
+      word-break: break-all;
+    }
+
+    .table-container {
+      overflow-x: auto;
+      margin-top: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      color: var(--text-muted);
+      font-weight: 500;
+      border-bottom: 1px solid var(--card-border);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    td {
+      padding: 0.8rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      vertical-align: middle;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-right: 0.3rem;
+      margin-bottom: 0.2rem;
+      border: 1px solid var(--card-border);
+    }
+
+    .badge-primary { background: #0c4a6e; color: #7dd3fc; border-color: #0369a1; }
+    .badge-warning { background: #713f12; color: #fde047; border-color: #a16207; }
+    .badge-success { background: #064e3b; color: #6ee7b7; border-color: #047857; }
+    .badge-accent { background: #312e81; color: #c7d2fe; border-color: #4338ca; }
+    .badge-danger { background: #7f1d1d; color: #fca5a5; border-color: #b91c1c; }
+
+    /* Diff View Styles */
+    .tab-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 0.5rem;
+    }
+
+    .tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.5rem 1rem;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-family: inherit;
+      border-radius: 6px;
+      transition: all 0.15s;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .tab-btn.active {
+      color: var(--primary);
+      background: rgba(56, 189, 248, 0.12);
+      font-weight: 600;
+    }
+
+    .diff-container {
+      background: #090d14;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      max-height: 480px;
+    }
+
+    .diff-line {
+      display: flex;
+      padding: 0.12rem 0.5rem;
+      line-height: 1.45;
+      white-space: pre;
+    }
+
+    .diff-line-num {
+      width: 44px;
+      text-align: right;
+      padding-right: 0.8rem;
+      color: #475569;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    .diff-line-sign {
+      width: 20px;
+      text-align: center;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    .diff-line-code {
+      flex-grow: 1;
+      overflow-x: visible;
+    }
+
+    .diff-add {
+      background: var(--diff-add-bg);
+      color: var(--diff-add-text);
+    }
+
+    .diff-add .diff-line-sign {
+      color: #4ade80;
+      font-weight: bold;
+    }
+
+    .diff-del {
+      background: var(--diff-del-bg);
+      color: var(--diff-del-text);
+    }
+
+    .diff-del .diff-line-sign {
+      color: #f87171;
+      font-weight: bold;
+    }
+
+    .diff-unchanged {
+      color: #94a3b8;
+    }
+
+    .diff-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .diff-stats {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .diff-stat-add {
+      color: #4ade80;
+      font-weight: 600;
+    }
+
+    .diff-stat-del {
+      color: #f87171;
+      font-weight: 600;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: #1e293b;
+      border: 1px solid #38bdf8;
+      color: #f8fafc;
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.2s ease;
+      z-index: 999;
+      pointer-events: none;
+      font-size: 0.9rem;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 隐藏的文件选择输入，用于从磁盘读取 routes.ts -->
+  <input type="file" id="filePicker" accept=".ts,.js,.json" style="display:none" onchange="onFileSelected(event)">
+
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="brand-logo">
+          <i class="mdui-icon material-icons">alt_route</i>
+        </div>
+        <div class="brand-title">
+          <h1>短链接配置与加盐哈希管理</h1>
+          <p>本地安全管理 · 对称加密防泄露 · 实时 Diff 差异对比</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn" onclick="openFileSelector()" title="直接从本地读取 routes.ts">
+          <i class="mdui-icon material-icons">folder_open</i> 读取配置
+        </button>
+        <button class="btn" onclick="exportEnvFile()" title="复制供本地与 Worker 读取的 .dev.vars / .env 环境变量文件">
+          <i class="mdui-icon material-icons">vpn_key</i> 导出 .env
+        </button>
+        <button class="btn" onclick="exportTypeScript()">
+          <i class="mdui-icon material-icons">content_copy</i> 复制 routes.ts
+        </button>
+        <button class="btn btn-primary" id="saveConfigBtn" onclick="saveConfigFile()" title="直接保存修改到文件 (Ctrl+S)">
+          <i class="mdui-icon material-icons" id="saveBtnIcon">save</i> <span id="saveBtnText">保存配置</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="grid-layout">
+      <!-- 1. 全局配置卡片 -->
+      <div class="card">
+        <div class="card-title">
+          <i class="mdui-icon material-icons">settings</i> 1. 全局站点与加密设置 (Settings)
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">dns</i> 部署主域名 (Base Domain)
+            </label>
+            <input type="text" id="cfgDomain" class="form-control" value="stevezmt.top" placeholder="例如 stevezmt.top" oninput="onSettingsChange()">
+          </div>
+          <div class="form-group">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">vpn_key</i> 密码哈希盐值 (留空默认使用主域名)
+            </label>
+            <input type="text" id="cfgSalt" class="form-control" placeholder="留空以主域名为 Salt" oninput="onSettingsChange()">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <i class="mdui-icon material-icons" style="font-size:16px;">enhanced_encryption</i> 公开部署对称加密密钥 (可选，AES-GCM)
+          </label>
+          <input type="text" id="cfgEncryptionKey" class="form-control mono" placeholder="留空则明文导出；若填写将加密短链，线上由 ROUTES_KEY 环境变量解密" oninput="onSettingsChange()">
+        </div>
+
+        <div class="form-group">
+          <label>
+            <i class="mdui-icon material-icons" style="font-size:16px;">error_outline</i> 404 兜底目标地址 (NotFound URL)
+          </label>
+          <input type="text" id="cfg404" class="form-control" value="https://stevezmt.top/404?from=${FULL_URL}" oninput="onSettingsChange()">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">tag</i> 全局默认 UTM Source
+            </label>
+            <input type="text" id="cfgUtmSource" class="form-control" value="shortlink" oninput="onSettingsChange()">
+          </div>
+          <div class="form-group">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">campaign</i> 全局默认 UTM Medium
+            </label>
+            <input type="text" id="cfgUtmMedium" class="form-control" value="redirect" oninput="onSettingsChange()">
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 添加/编辑短链接卡片 -->
+      <div class="card">
+        <div class="card-title">
+          <i class="mdui-icon material-icons">add_link</i> 2. 添加 / 编辑短链接
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">link</i> 短链路径 (支持 /、/path、blog:/:slug 或 regex:^...)
+            </label>
+            <input type="text" id="linkPath" class="form-control mono" placeholder="/ 或 blog:/:slug 或 blog:/* 或 regex:^...">
+          </div>
+          <div class="form-group">
+            <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+              <span style="display: flex; align-items: center; gap: 0.35rem;">
+                <i class="mdui-icon material-icons" style="font-size:16px;">open_in_new</i> 目标网址 (Target URL)
+              </span>
+              <span style="font-size: 0.8rem; color: #38bdf8; display: flex; align-items: center; gap: 0.3rem;">
+                <input type="checkbox" id="linkEncryptTarget" style="cursor: pointer;">
+                <label for="linkEncryptTarget" style="cursor: pointer; margin: 0; color: #38bdf8;">加密此目标 (由 .env 密钥解密)</label>
+              </span>
+            </label>
+            <input type="text" id="linkTarget" class="form-control" placeholder="https://... 或 https://.../post/:slug 或 $1">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <i class="mdui-icon material-icons" style="font-size:16px;">lock</i> 访问密码保护 (直接指定加盐哈希，无需保存明文密码)
+          </label>
+          <input type="text" id="linkPassword" class="form-control" placeholder="输入访客需提交的密码（自动生成加盐哈希存入配置）或留空" oninput="updateHashPreview()">
+          <div id="hashPreviewBox" class="hash-preview" style="display: none;">
+            <div class="label">
+              <span>SHA-256 加盐哈希 (仅此哈希存入 routes.ts，服务端无需存储密码)</span>
+              <span id="currentSaltLabel">Salt: stevezmt.top</span>
+            </div>
+            <div class="hash-val mono" id="hashValPreview">sha256:...</div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">security</i> 最低 TLS 要求
+            </label>
+            <select id="linkMinTls" class="form-control">
+              <option value="">不限制</option>
+              <option value="1.2">要求 TLS 1.2+</option>
+              <option value="1.3">要求 TLS 1.3+</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">block</i> 爬虫拦截
+            </label>
+            <select id="linkBlockBots" class="form-control">
+              <option value="false">放行</option>
+              <option value="true">拦截常见恶意 Bot (403)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <i class="mdui-icon material-icons" style="font-size:16px;">phone_iphone</i> 移动端专属落地页 (可选)
+          </label>
+          <input type="text" id="linkMobile" class="form-control" placeholder="留空则移动端前往相同目标">
+        </div>
+
+        <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="saveLink()">
+          <i class="mdui-icon material-icons">check</i> 保存短链接到路由表
+        </button>
+      </div>
+    </div>
+
+    <!-- 3. 已配置的短链列表 -->
+    <div class="card" style="margin-bottom: 2rem;">
+      <div class="card-title" style="justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <i class="mdui-icon material-icons">table_chart</i>
+          <span>3. 当前路由表 (<span id="routeCount">0</span> 条)</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn btn-sm" onclick="revertToBaseline()" title="放弃编辑，还原为最初读取的配置">
+            <i class="mdui-icon material-icons">undo</i> 还原原配置
+          </button>
+          <button class="btn btn-sm" onclick="loadSampleRoutes()" title="仅保留自身根路径 / 被访问时的重定向">
+            <i class="mdui-icon material-icons">restart_alt</i> 重置为默认模板 (仅根重定向)
+          </button>
+        </div>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>短链路径</th>
+              <th>目标跳转地址</th>
+              <th>特性与安全策略</th>
+              <th style="text-align: right;">操作</th>
+            </tr>
+          </thead>
+          <tbody id="routesTableBody">
+            <!-- 动态渲染 -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 4. 代码与修改 Diff 视图 -->
+    <div class="card">
+      <div class="tab-bar">
+        <button class="tab-btn active" id="tabDiffBtn" onclick="switchTab('diff')">
+          <i class="mdui-icon material-icons">difference</i> 修改对比 (Diff)
+        </button>
+        <button class="tab-btn" id="tabCodeBtn" onclick="switchTab('code')">
+          <i class="mdui-icon material-icons">code</i> 完整 routes.ts
+        </button>
+      </div>
+
+      <!-- Diff 视图面板 -->
+      <div id="diffPanel">
+        <div class="diff-header">
+          <div>
+            <span>对比基准：</span>
+            <span id="baselineSourceName" style="color: #cbd5e1; font-weight: 500;">src/config/routes.ts</span>
+          </div>
+          <div class="diff-stats" id="diffStats">
+            <span class="diff-stat-add">+0</span>
+            <span class="diff-stat-del">-0</span>
+          </div>
+        </div>
+        <div class="diff-container" id="diffContainer">
+          <!-- 动态渲染 Diff 行 -->
+        </div>
+      </div>
+
+      <!-- 完整代码面板 -->
+      <div id="codePanel" style="display: none;">
+        <div class="diff-container" id="fullCodeBox" style="padding: 1rem; color: #93c5fd; white-space: pre;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast">
+    <i class="mdui-icon material-icons">check_circle</i>
+    <span id="toastText">操作成功</span>
+  </div>
+
+  <script>
+    // 初始基准代码（仅保留自身被访问时重定向到主页）
+    let baselineSourceCode = `/**
+ * Short Link Configuration Table.
+ *
+ * Designed with 《A Philosophy of Software Design》 principles:
+ * - Centralized Settings: Domain, 404, and UTM defaults are defined in ONE place.
+ * - Minimal Default Template: Only routes root '/' to destination when accessed.
+ * - Optional Symmetric Encryption: Supports \`encrypted: 'aes-gcm:v1:...'\` with ROUTES_KEY env var.
+ */
+
+import { ShortLinkConfig } from '../types';
+
+export const config: ShortLinkConfig = {
+  settings: {
+    domain: 'stevezmt.top',
+    notFoundUrl: 'https://stevezmt.top/404?from=\${FULL_URL}',
+    notFoundMode: 'redirect',
+    defaultUtm: {
+      utm_source: 'shortlink',
+      utm_medium: 'redirect',
+    },
+  },
+
+  links: {
+    '/': 'https://stevezmt.top',
+  },
+};
+`;
+
+    // 默认短链配置状态（仅保留自身被访问时的重定向）
+    let state = {
+      settings: {
+        domain: 'stevezmt.top',
+        salt: '',
+        encryptionKey: '',
+        notFoundUrl: 'https://stevezmt.top/404?from=${FULL_URL}',
+        notFoundMode: 'redirect',
+        defaultUtm: { utm_source: 'shortlink', utm_medium: 'redirect' }
+      },
+      links: {
+        '/': 'https://stevezmt.top',
+      }
+    };
+
+    let activeTab = 'diff';
+    let currentFileHandle = null;
+
+    function updateSaveButtonState() {
+      const btnText = document.getElementById('saveBtnText');
+      const btn = document.getElementById('saveConfigBtn');
+      const baselineEl = document.getElementById('baselineSourceName');
+      if (currentFileHandle) {
+        if (btnText) btnText.textContent = `保存到 ${currentFileHandle.name}`;
+        if (btn) btn.title = `直接修改并写回磁盘文件 ${currentFileHandle.name} (快捷键 Ctrl+S)`;
+        if (baselineEl) {
+          baselineEl.innerHTML = `${escapeHtml(currentFileHandle.name)} <span style="color:#38bdf8;font-size:0.8rem;margin-left:0.5rem;font-weight:normal;">[已直连，直接写回]</span>`;
+        }
+      } else {
+        if (btnText) btnText.textContent = '保存配置';
+        if (btn) btn.title = '保存修改 (若浏览器支持将直接写回/另存，快捷键 Ctrl+S)';
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Web Crypto 原生 AES-GCM (256-bit) 与 HKDF (SHA-256) 极速对称加解密算法
+    // 与 Worker src/utils/crypto.ts 严格对齐，执行耗时 < 0.1ms
+    // -------------------------------------------------------------
+    const SALT_BYTES = 16;
+    const IV_BYTES = 12;
+    const PAYLOAD_PREFIX = 'aes-gcm:v1:';
+    const HKDF_INFO = new TextEncoder().encode('cf-worker-shortlink-v1');
+
+    function bytesToBase64(bytes) {
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      return btoa(binary);
+    }
+
+    function base64ToBytes(base64) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+
+    // 与 Worker crypto.ts 严格一致的 HKDF 密钥派生
+    async function deriveAesKey(password, salt, usage) {
+      const encoder = new TextEncoder();
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(password),
+        'HKDF',
+        false,
+        ['deriveKey']
+      );
+
+      return crypto.subtle.deriveKey(
+        {
+          name: 'HKDF',
+          salt,
+          info: HKDF_INFO,
+          hash: 'SHA-256',
+        },
+        keyMaterial,
+        {
+          name: 'AES-GCM',
+          length: 256,
+        },
+        false,
+        usage
+      );
+    }
+
+    async function encryptData(data, password) {
+      const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
+      const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+      const key = await deriveAesKey(password, salt, ['encrypt']);
+      const jsonString = typeof data === 'string' ? data : JSON.stringify(data);
+      const cipherBuffer = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        new TextEncoder().encode(jsonString)
+      );
+      const cipherArray = new Uint8Array(cipherBuffer);
+      const combined = new Uint8Array(salt.length + iv.length + cipherArray.length);
+      combined.set(salt, 0);
+      combined.set(iv, salt.length);
+      combined.set(cipherArray, salt.length + iv.length);
+      return PAYLOAD_PREFIX + bytesToBase64(combined);
+    }
+
+    async function decryptData(payload, password) {
+      const cleanPayload = payload.trim();
+      let base64Part = cleanPayload;
+      if (cleanPayload.startsWith('aes-gcm:v1:')) {
+        base64Part = cleanPayload.slice('aes-gcm:v1:'.length);
+      } else if (cleanPayload.startsWith('aes-gcm:v2:')) {
+        base64Part = cleanPayload.slice('aes-gcm:v2:'.length);
+      }
+      const combined = base64ToBytes(base64Part);
+      const salt = combined.slice(0, SALT_BYTES);
+      const iv = combined.slice(SALT_BYTES, SALT_BYTES + IV_BYTES);
+      const ciphertext = combined.slice(SALT_BYTES + IV_BYTES);
+      const key = await deriveAesKey(password, salt, ['decrypt']);
+      const decryptedBuffer = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        ciphertext
+      );
+      const decryptedText = new TextDecoder().decode(decryptedBuffer);
+      try {
+        return JSON.parse(decryptedText);
+      } catch (_) {
+        return decryptedText;
+      }
+    }
+
+    // -------------------------------------------------------------
+    // 计算密码加盐 SHA-256 哈希
+    // -------------------------------------------------------------
+    async function computeSaltedHash(password, salt) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password + ":" + salt);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function getActiveSalt() {
+      const explicitSalt = document.getElementById('cfgSalt').value.trim();
+      const domain = document.getElementById('cfgDomain').value.trim();
+      return explicitSalt || domain || 'default-salt';
+    }
+
+    async function updateHashPreview() {
+      const pwd = document.getElementById('linkPassword').value;
+      const box = document.getElementById('hashPreviewBox');
+      const salt = getActiveSalt();
+
+      if (!pwd) {
+        box.style.display = 'none';
+        return;
+      }
+
+      box.style.display = 'block';
+      document.getElementById('currentSaltLabel').textContent = 'Salt: ' + salt;
+      const hex = await computeSaltedHash(pwd, salt);
+      document.getElementById('hashValPreview').textContent = 'sha256:' + hex;
+    }
+
+    function onSettingsChange() {
+      state.settings.domain = document.getElementById('cfgDomain').value.trim();
+      state.settings.salt = document.getElementById('cfgSalt').value.trim();
+      state.settings.encryptionKey = document.getElementById('cfgEncryptionKey').value.trim();
+      state.settings.notFoundUrl = document.getElementById('cfg404').value.trim();
+      state.settings.defaultUtm.utm_source = document.getElementById('cfgUtmSource').value.trim();
+      state.settings.defaultUtm.utm_medium = document.getElementById('cfgUtmMedium').value.trim();
+      updateHashPreview();
+      renderAll();
+    }
+
+    function togglePasswordMode() {
+      const useUnified = document.getElementById('linkUseUnifiedPass').checked;
+      document.getElementById('unifiedPassTip').style.display = useUnified ? 'flex' : 'none';
+      document.getElementById('customPassGroup').style.display = useUnified ? 'none' : 'block';
+      if (useUnified) {
+        document.getElementById('linkPassword').value = '';
+        document.getElementById('hashPreviewBox').style.display = 'none';
+      }
+    }
+
+    async function saveLink() {
+      const path = document.getElementById('linkPath').value.trim();
+      let target = document.getElementById('linkTarget').value.trim();
+      const encryptTarget = document.getElementById('linkEncryptTarget').checked;
+      const customPassword = document.getElementById('linkPassword').value.trim();
+      const minTls = document.getElementById('linkMinTls').value;
+      const blockBots = document.getElementById('linkBlockBots').value === 'true';
+      const mobile = document.getElementById('linkMobile').value.trim();
+
+      if (!path || !target) {
+        alert('请填写短链路径和目标网址！');
+        return;
+      }
+
+      if (encryptTarget && !target.startsWith('aes-gcm:')) {
+        const encKey = state.settings.encryptionKey || prompt('请输入用于加密此目标的对称密钥 (保存在 .env 中的 ROUTES_KEY)：');
+        if (!encKey) {
+          alert('未提供密钥，取消加密。');
+          return;
+        }
+        state.settings.encryptionKey = encKey;
+        document.getElementById('cfgEncryptionKey').value = encKey;
+        target = await encryptData(target, encKey);
+      }
+
+      if (!customPassword && !minTls && !blockBots && !mobile) {
+        state.links[path] = target;
+      } else {
+        const item = { target };
+        if (customPassword) {
+          if (customPassword.startsWith('sha256:')) {
+            item.password = customPassword;
+          } else {
+            const salt = getActiveSalt();
+            const hash = await computeSaltedHash(customPassword, salt);
+            item.password = 'sha256:' + hash;
+          }
+        }
+        if (minTls) item.minTls = minTls;
+        if (blockBots) item.blockBots = true;
+        if (mobile) item.mobile = mobile;
+        state.links[path] = item;
+      }
+
+      document.getElementById('linkPath').value = '';
+      document.getElementById('linkTarget').value = '';
+      document.getElementById('linkEncryptTarget').checked = false;
+      document.getElementById('linkPassword').value = '';
+      document.getElementById('linkMinTls').value = '';
+      document.getElementById('linkBlockBots').value = 'false';
+      document.getElementById('linkMobile').value = '';
+      document.getElementById('hashPreviewBox').style.display = 'none';
+
+      renderAll();
+      showToast('短链已保存');
+    }
+
+    function deleteLink(path) {
+      if (confirm(`确认删除短链 ${path} 吗？`)) {
+        delete state.links[path];
+        renderAll();
+        showToast('短链已删除');
+      }
+    }
+
+    function editLink(path) {
+      const val = state.links[path];
+      document.getElementById('linkPath').value = path;
+      if (typeof val === 'string') {
+        document.getElementById('linkTarget').value = val;
+        document.getElementById('linkEncryptTarget').checked = val.startsWith('aes-gcm:');
+        document.getElementById('linkPassword').value = '';
+        document.getElementById('linkMinTls').value = '';
+        document.getElementById('linkBlockBots').value = 'false';
+        document.getElementById('linkMobile').value = '';
+      } else {
+        const targetStr = val.target || '';
+        document.getElementById('linkTarget').value = targetStr;
+        document.getElementById('linkEncryptTarget').checked = typeof targetStr === 'string' && targetStr.startsWith('aes-gcm:');
+        document.getElementById('linkPassword').value = val.password || '';
+        document.getElementById('linkMinTls').value = val.minTls || '';
+        document.getElementById('linkBlockBots').value = val.blockBots ? 'true' : 'false';
+        document.getElementById('linkMobile').value = val.mobile || '';
+      }
+      updateHashPreview();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('routesTableBody');
+      tbody.innerHTML = '';
+      const entries = Object.entries(state.links);
+      document.getElementById('routeCount').textContent = entries.length;
+
+      for (const [path, val] of entries) {
+        const tr = document.createElement('tr');
+        const isString = typeof val === 'string';
+        const target = isString ? val : val.target;
+        const isTargetEncrypted = typeof target === 'string' && target.startsWith('aes-gcm:');
+
+        let badges = '';
+        if (path === '/') {
+          badges += '<span class="badge badge-success"><i class="mdui-icon material-icons" style="font-size:12px;">home</i> 根路径自身重定向</span>';
+        } else if (path.startsWith('regex:')) {
+          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">code</i> 正则匹配</span>';
+        } else if (path.includes('/:')) {
+          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">tune</i> 动态参数 (:slug)</span>';
+        } else if (path.includes(':')) {
+          badges += '<span class="badge badge-accent"><i class="mdui-icon material-icons" style="font-size:12px;">language</i> 子域名</span>';
+        }
+
+        if (isTargetEncrypted) {
+          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">enhanced_encryption</i> 目标已加密</span>';
+        }
+
+        if (!isString) {
+          if (val.password) {
+            badges += '<span class="badge badge-warning"><i class="mdui-icon material-icons" style="font-size:12px;">lock</i> 加盐哈希</span>';
+          }
+          if (val.minTls) {
+            badges += `<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">security</i> TLS ${val.minTls}+</span>`;
+          }
+          if (val.blockBots) {
+            badges += '<span class="badge badge-danger"><i class="mdui-icon material-icons" style="font-size:12px;">block</i> 防爬虫</span>';
+          }
+          if (val.mobile) {
+            badges += '<span class="badge badge-success"><i class="mdui-icon material-icons" style="font-size:12px;">phone_iphone</i> 移动分流</span>';
+          }
+        }
+
+        tr.innerHTML = `
+          <td><strong class="mono" style="color: #38bdf8;">${path}</strong></td>
+          <td><a href="${target}" target="_blank" style="color: #94a3b8; text-decoration: none;">${target}</a></td>
+          <td>${badges || '<span style="color: #64748b; font-size: 0.8rem;">基础跳转</span>'}</td>
+          <td style="text-align: right;">
+            <button class="btn btn-sm" onclick="editLink('${path}')">
+              <i class="mdui-icon material-icons" style="font-size:15px;">edit</i>
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="deleteLink('${path}')">
+              <i class="mdui-icon material-icons" style="font-size:15px;">delete</i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    /**
+     * 将 JavaScript 对象序列化为合法的 TypeScript 对象字面量代码。
+     * 正确处理字符串转义（单引号、反斜杠、换行符），杜绝破坏性文本替换导致 TS 语法错误。
+     */
+    function serializeTsLiteral(val, indentLevel = 2) {
+      const indent = ' '.repeat(indentLevel);
+      const childIndent = ' '.repeat(indentLevel + 2);
+
+      if (val === null || val === undefined) return 'undefined';
+      if (typeof val === 'boolean' || typeof val === 'number') return String(val);
+      if (typeof val === 'string') {
+        return "'" + val.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n') + "'";
+      }
+      if (Array.isArray(val)) {
+        if (val.length === 0) return '[]';
+        const items = val.map(item => childIndent + serializeTsLiteral(item, indentLevel + 2)).join(',\n');
+        return `[\n${items}\n${indent}]`;
+      }
+      if (typeof val === 'object') {
+        const entries = Object.entries(val);
+        if (entries.length === 0) return '{}';
+        const lines = entries.map(([k, v]) => {
+          const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k)
+            ? k
+            : `'${k.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+          return `${childIndent}${safeKey}: ${serializeTsLiteral(v, indentLevel + 2)},`;
+        });
+        return `{\n${lines.join('\n')}\n${indent}}`;
+      }
+      return String(val);
+    }
+
+    async function generateTypeScriptCodeAsync() {
+      const encKey = state.settings.encryptionKey;
+      const utmSource = (state.settings.defaultUtm?.utm_source || '').trim();
+      const utmMedium = (state.settings.defaultUtm?.utm_medium || '').trim();
+      let utmSnippet = '';
+      if (utmSource || utmMedium) {
+        utmSnippet = `\n    defaultUtm: {` +
+          (utmSource ? `\n      utm_source: '${utmSource}',` : '') +
+          (utmMedium ? `\n      utm_medium: '${utmMedium}',` : '') +
+          `\n    },`;
+      }
+
+      if (encKey) {
+        // 对称加密全部 links（除公开的根路径 / 以外，或者整表加密）
+        const encryptedPayload = await encryptData(state.links, encKey);
+        const rootTarget = typeof state.links['/'] === 'string' ? state.links['/'] : (state.links['/']?.target || 'https://' + state.settings.domain);
+
+        return `/**
+ * Short Link Configuration Table.
+ * Generated via admin.html (Encrypted with AES-GCM + HKDF)
+ *
+ * NOTE: Symmetrically encrypted for public repo security!
+ * Set environment variable ROUTES_KEY in Cloudflare Worker dashboard.
+ */
+
+import { ShortLinkConfig } from '../types';
+
+export const config: ShortLinkConfig = {
+  settings: {
+    domain: '${state.settings.domain}',
+    ${state.settings.salt ? `salt: '${state.settings.salt}',\n    ` : ''}notFoundUrl: '${state.settings.notFoundUrl}',
+    notFoundMode: '${state.settings.notFoundMode}',${utmSnippet}
+  },
+
+  // 自身访问时的公开重定向
+  links: {
+    '/': '${rootTarget}',
+  },
+
+  // 对称加密短链数据（AES-GCM-256 + HKDF，线上由 ROUTES_KEY 环境变量自动解密）
+  encrypted: '${encryptedPayload}',
+};
+`;
+      }
+
+      // 明文安全导出（通过类型安全的字面量序列化器，避免字符串中单引号引起语法报错）
+      const linksTs = serializeTsLiteral(state.links, 2);
+
+      return `/**
+ * Short Link Configuration Table.
+ * Generated via admin.html
+ */
+
+import { ShortLinkConfig } from '../types';
+
+export const config: ShortLinkConfig = {
+  settings: {
+    domain: '${state.settings.domain}',
+    ${state.settings.salt ? `salt: '${state.settings.salt}',\n    ` : ''}notFoundUrl: '${state.settings.notFoundUrl}',
+    notFoundMode: '${state.settings.notFoundMode}',${utmSnippet}
+  },
+
+  links: ${linksTs},
+};
+`;
+    }
+
+    // 行级 LCS Diff 算法
+    function computeLineDiff(oldText, newText) {
+      const oldLines = oldText.split('\n');
+      const newLines = newText.split('\n');
+      const m = oldLines.length;
+      const n = newLines.length;
+
+      const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
+      for (let i = 0; i < m; i++) {
+        for (let j = 0; j < n; j++) {
+          if (oldLines[i] === newLines[j]) {
+            dp[i + 1][j + 1] = dp[i][j] + 1;
+          } else {
+            dp[i + 1][j + 1] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+          }
+        }
+      }
+
+      let i = m, j = n;
+      const diff = [];
+      while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+          diff.push({ type: 'unchanged', text: oldLines[i - 1], oldNum: i, newNum: j });
+          i--;
+          j--;
+        } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+          diff.push({ type: 'added', text: newLines[j - 1], oldNum: null, newNum: j });
+          j--;
+        } else if (i > 0 && (j === 0 || dp[i][j - 1] < dp[i - 1][j])) {
+          diff.push({ type: 'removed', text: oldLines[i - 1], oldNum: i, newNum: null });
+          i--;
+        }
+      }
+
+      return diff.reverse();
+    }
+
+    async function renderDiff() {
+      const currentCode = await generateTypeScriptCodeAsync();
+      const diffList = computeLineDiff(baselineSourceCode, currentCode);
+      const container = document.getElementById('diffContainer');
+      container.innerHTML = '';
+
+      let addedCount = 0;
+      let removedCount = 0;
+
+      diffList.forEach(item => {
+        const lineDiv = document.createElement('div');
+        let lineClass = 'diff-line diff-unchanged';
+        let sign = ' ';
+
+        if (item.type === 'added') {
+          lineClass = 'diff-line diff-add';
+          sign = '+';
+          addedCount++;
+        } else if (item.type === 'removed') {
+          lineClass = 'diff-line diff-del';
+          sign = '-';
+          removedCount++;
+        }
+
+        lineDiv.className = lineClass;
+
+        const oldNumStr = item.oldNum ? String(item.oldNum) : '';
+        const newNumStr = item.newNum ? String(item.newNum) : '';
+
+        lineDiv.innerHTML = `
+          <span class="diff-line-num">${newNumStr || oldNumStr}</span>
+          <span class="diff-line-sign">${sign}</span>
+          <span class="diff-line-code">${escapeHtml(item.text)}</span>
+        `;
+        container.appendChild(lineDiv);
+      });
+
+      const statsEl = document.getElementById('diffStats');
+      if (addedCount === 0 && removedCount === 0) {
+        statsEl.innerHTML = '<span style="color: #64748b;">未修改（与原配置完全一致）</span>';
+      } else {
+        statsEl.innerHTML = `
+          <span class="diff-stat-add">+${addedCount} 行新增</span>
+          <span class="diff-stat-del">-${removedCount} 行删除</span>
+        `;
+      }
+
+      document.getElementById('fullCodeBox').textContent = currentCode;
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      if (tab === 'diff') {
+        document.getElementById('tabDiffBtn').classList.add('active');
+        document.getElementById('tabCodeBtn').classList.remove('active');
+        document.getElementById('diffPanel').style.display = 'block';
+        document.getElementById('codePanel').style.display = 'none';
+      } else {
+        document.getElementById('tabDiffBtn').classList.remove('active');
+        document.getElementById('tabCodeBtn').classList.add('active');
+        document.getElementById('diffPanel').style.display = 'none';
+        document.getElementById('codePanel').style.display = 'block';
+      }
+    }
+
+    function renderAll() {
+      renderTable();
+      renderDiff();
+    }
+
+    // 获取当前页面所在项目目录下的 src/config 路径
+    function getConfigFolderPath() {
+      try {
+        let path = decodeURIComponent(location.pathname);
+        if (path.startsWith('/') && path.charAt(2) === ':') {
+          path = path.slice(1);
+        }
+        const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        const dir = lastSlash !== -1 ? path.slice(0, lastSlash) : path;
+        const isWindows = path.includes(':') || navigator.userAgent.includes('Windows');
+        if (isWindows) {
+          return (dir + '/src/config').replace(/\//g, '\\');
+        }
+        return dir + '/src/config';
+      } catch (_) {
+        return 'src/config';
+      }
+    }
+
+    // 解析 TypeScript / JSON 配置文件内容
+    async function parseConfigFile(rawText) {
+      try {
+        let objStr = '';
+        const configIdx = rawText.indexOf('config');
+        if (configIdx !== -1) {
+          const start = rawText.indexOf('{', configIdx);
+          const end = rawText.lastIndexOf('}');
+          if (start !== -1 && end > start) {
+            objStr = rawText.slice(start, end + 1);
+          }
+        }
+
+        if (!objStr) {
+          const start = rawText.indexOf('{');
+          const end = rawText.lastIndexOf('}');
+          if (start !== -1 && end > start) {
+            objStr = rawText.slice(start, end + 1);
+          }
+        }
+
+        if (!objStr) {
+          throw new Error('未能从文件中识别出有效的配置对象 { ... }');
+        }
+
+        let parsed;
+        try {
+          const fn = new Function('return (' + objStr + ')');
+          parsed = fn();
+        } catch (fnErr) {
+          // 清理注释后再试一次
+          const cleanObjStr = objStr
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/\/\/[^\n]*/g, '');
+          const fn = new Function('return (' + cleanObjStr + ')');
+          parsed = fn();
+        }
+
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error('解析出的配置对象无效');
+        }
+
+        // 智能检测是否存在加密内容（仅当有加密时才请求密码）
+        let hasEncrypted = !!(parsed.encrypted && typeof parsed.encrypted === 'string');
+        if (!hasEncrypted && parsed.links) {
+          for (const val of Object.values(parsed.links)) {
+            const target = typeof val === 'string' ? val : (val && val.target);
+            if (typeof target === 'string' && target.startsWith('aes-gcm:')) {
+              hasEncrypted = true;
+              break;
+            }
+          }
+        }
+
+        let decryptedLinks = {};
+        if (hasEncrypted) {
+          const pwd = prompt('检测到配置文件中包含加密内容！\n请输入保存在 .env 中的统一密钥 (ROUTES_KEY)：');
+          if (!pwd) {
+            alert('已跳过解密，未解密的密文内容保持原样。');
+          } else {
+            try {
+              if (parsed.encrypted) {
+                decryptedLinks = await decryptData(parsed.encrypted, pwd);
+              }
+              state.settings.encryptionKey = pwd;
+              document.getElementById('cfgEncryptionKey').value = pwd;
+
+              // 解密单目标中的 aes-gcm 密文，方便可视化编辑
+              if (parsed.links) {
+                for (const [k, v] of Object.entries(parsed.links)) {
+                  if (typeof v === 'string' && v.startsWith('aes-gcm:')) {
+                    try {
+                      parsed.links[k] = await decryptData(v, pwd);
+                    } catch (_) {}
+                  } else if (v && typeof v.target === 'string' && v.target.startsWith('aes-gcm:')) {
+                    try {
+                      v.target = await decryptData(v.target, pwd);
+                    } catch (_) {}
+                  }
+                }
+              }
+              showToast('已成功根据 .env 密钥解密配置');
+            } catch (err) {
+              alert('解密失败：密码错误或数据已损坏！');
+            }
+          }
+        }
+
+        // 设置为基准
+        baselineSourceCode = rawText;
+
+        if (parsed.settings) {
+          state.settings.domain = parsed.settings.domain || '';
+          state.settings.salt = parsed.settings.salt || '';
+          state.settings.notFoundUrl = parsed.settings.notFoundUrl || 'https://stevezmt.top/404?from=${FULL_URL}';
+          state.settings.notFoundMode = parsed.settings.notFoundMode || 'redirect';
+          if (parsed.settings.defaultUtm) {
+            state.settings.defaultUtm = { ...parsed.settings.defaultUtm };
+          }
+        }
+
+        state.links = {
+          ...(parsed.links || {}),
+          ...decryptedLinks,
+        };
+
+        // 更新 UI 控件
+        document.getElementById('cfgDomain').value = state.settings.domain;
+        document.getElementById('cfgSalt').value = state.settings.salt || '';
+        document.getElementById('cfg404').value = state.settings.notFoundUrl;
+        document.getElementById('cfgUtmSource').value = state.settings.defaultUtm?.utm_source || '';
+        document.getElementById('cfgUtmMedium').value = state.settings.defaultUtm?.utm_medium || '';
+
+        renderAll();
+        showToast('已成功读取并载入配置');
+      } catch (err) {
+        alert('读取解析配置文件失败: ' + err.message);
+      }
+    }
+
+    // 打开本地文件选择器
+    async function openFileSelector() {
+      const configPath = getConfigFolderPath();
+      try {
+        await navigator.clipboard.writeText(configPath);
+        showToast(`已复制路径：${configPath} (可直接在文件弹窗地址栏粘贴)`);
+      } catch (_) {}
+
+      if ('showOpenFilePicker' in window) {
+        try {
+          const [fileHandle] = await window.showOpenFilePicker({
+            types: [
+              {
+                description: 'TypeScript/JavaScript Config',
+                accept: { 'text/plain': ['.ts', '.js', '.json'], 'text/typescript': ['.ts'] }
+              }
+            ]
+          });
+          currentFileHandle = fileHandle;
+          const file = await fileHandle.getFile();
+          const text = await file.text();
+          baselineSourceCode = text;
+          updateSaveButtonState();
+          await parseConfigFile(text);
+          return;
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+        }
+      }
+      document.getElementById('filePicker').click();
+    }
+
+    function onFileSelected(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      currentFileHandle = null;
+      document.getElementById('baselineSourceName').textContent = file.name;
+      updateSaveButtonState();
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        baselineSourceCode = ev.target.result;
+        await parseConfigFile(ev.target.result);
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    }
+
+    // 拖拽支持（支持 Chromium 文件句柄直接抓取）
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      if (e.dataTransfer.items && e.dataTransfer.items[0] && 'getAsFileSystemHandle' in e.dataTransfer.items[0]) {
+        try {
+          const handle = await e.dataTransfer.items[0].getAsFileSystemHandle();
+          if (handle && handle.kind === 'file') {
+            currentFileHandle = handle;
+            const file = await handle.getFile();
+            updateSaveButtonState();
+            const text = await file.text();
+            baselineSourceCode = text;
+            await parseConfigFile(text);
+            return;
+          }
+        } catch (_) {}
+      }
+
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        const file = files[0];
+        currentFileHandle = null;
+        document.getElementById('baselineSourceName').textContent = file.name;
+        updateSaveButtonState();
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          baselineSourceCode = ev.target.result;
+          await parseConfigFile(ev.target.result);
+        };
+        reader.readAsText(file);
+      }
+    });
+
+    async function revertToBaseline() {
+      if (confirm('确认放弃当前所有未保存的修改，还原为基准配置吗？')) {
+        await parseConfigFile(baselineSourceCode);
+        showToast('已还原为原配置');
+      }
+    }
+
+    async function exportTypeScript() {
+      const code = await generateTypeScriptCodeAsync();
+      navigator.clipboard.writeText(code).then(() => {
+        showToast('已复制 routes.ts 到剪贴板');
+      });
+    }
+
+    // 直接保存修改到本地文件（核心实现：File System Access API 直接写回）
+    async function saveConfigFile() {
+      const code = await generateTypeScriptCodeAsync();
+
+      // 1. 若当前已通过读取持有本地文件句柄，直接原地修改写回！
+      if (currentFileHandle) {
+        try {
+          if (currentFileHandle.queryPermission) {
+            const perm = await currentFileHandle.queryPermission({ mode: 'readwrite' });
+            if (perm !== 'granted') {
+              const reqPerm = await currentFileHandle.requestPermission({ mode: 'readwrite' });
+              if (reqPerm !== 'granted') {
+                throw new Error('未获得对本地文件的写回权限');
+              }
+            }
+          }
+          const writable = await currentFileHandle.createWritable();
+          await writable.write(code);
+          await writable.close();
+
+          baselineSourceCode = code;
+          renderDiff();
+          showToast(`已直接修改并写回本地文件：${currentFileHandle.name}`);
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+          console.warn('直接写回本地文件失败，尝试另存或下载:', err);
+          showToast('直接写回遇到权限受限，正在调起另存弹窗...');
+        }
+      }
+
+      // 2. 若当前无句柄但浏览器支持 showSaveFilePicker，调起保存并关联句柄
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: 'routes.ts',
+            types: [
+              {
+                description: 'TypeScript Route Configuration',
+                accept: { 'text/typescript': ['.ts'], 'text/plain': ['.ts'] }
+              }
+            ]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(code);
+          await writable.close();
+
+          currentFileHandle = handle;
+          updateSaveButtonState();
+          baselineSourceCode = code;
+          renderDiff();
+          showToast(`已直接保存并绑定至本地文件：${handle.name}`);
+          return;
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+        }
+      }
+
+      // 3. 最终兜底：传统浏览器下载 Blob
+      downloadConfigFileFallback(code);
+    }
+
+    function downloadConfigFileFallback(code) {
+      const blob = new Blob([code], { type: 'text/typescript' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'routes.ts';
+      a.click();
+      showToast('已开始下载 routes.ts 文件 (当前环境不支持直接本地写回)');
+    }
+
+    async function downloadConfigFile() {
+      // 保持向后兼容调用
+      await saveConfigFile();
+    }
+
+    // 绑定快捷键 Ctrl+S / Cmd+S 触发直接保存
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveConfigFile();
+      }
+    });
+
+    function exportEnvFile() {
+      const key = state.settings.encryptionKey || 'stevezmt_secure_pass_2026';
+      const envText = `# Cloudflare Worker 统一密码配置 (.dev.vars / .env)
+# 放在短链接项目根目录下供本地开发 (wrangler dev) 与 Worker 读取
+# 线上部署请执行: npx wrangler secret put ROUTES_KEY
+
+ROUTES_KEY=${key}
+`;
+      navigator.clipboard.writeText(envText).then(() => {
+        showToast('已将 .dev.vars / .env 内容复制到剪贴板！');
+      });
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastText').textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    function loadSampleRoutes() {
+      // 仅保留自身被访问时重定向的目标地址
+      state.links = {
+        '/': 'https://stevezmt.top',
+      };
+      renderAll();
+      showToast('已重置为仅包含自身重定向的极简默认模板');
+    }
+
+    // 初始化渲染
+    renderAll();
+  </script>
+</body>
+</html>

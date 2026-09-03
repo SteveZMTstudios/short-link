@@ -1,0 +1,28 @@
+{
+  "name": "short-link-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker short link service with tiered redirects, auth, and rule engine",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "cloudflare-worker",
+    "short-link",
+    "redirect",
+    "utm"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250224.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7",
+    "wrangler": "^3.109.2"
+  }
+}
