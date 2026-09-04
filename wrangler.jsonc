@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "short-link-service",
+  "name": "short-link",
   "main": "src/index.ts",
   "compatibility_date": "2025-02-24",
   "observability": {
