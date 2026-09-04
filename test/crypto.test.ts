@@ -81,7 +81,7 @@ describe('Symmetric Encryption for Public Repositories', () => {
 
     // Other non-existent path goes to 404
     const resMissing = await handler(new Request('https://stevezmt.top/unmapped'));
-    expect(resMissing.status).toBe(302);
+    expect(resMissing.status).toBe(404);
     expect(resMissing.headers.get('Location')).toContain('/404?from=');
   });
 

@@ -158,8 +158,7 @@ export function normalizeConfig(
 
   const notFoundTarget =
     settings.notFoundUrl ||
-    shortConfig.notFound?.target ||
-    'https://stevezmt.top/404?from=${FULL_URL}';
+    shortConfig.notFound?.target;
 
   const notFoundMode =
     settings.notFoundMode || shortConfig.notFound?.mode || 'redirect';
@@ -177,6 +176,60 @@ interface ResolvedRuntimeConfig {
   appConfig: AppConfig;
   compiledRoutes: CompiledRoute[];
   settings?: SettingsConfig;
+}
+
+export function createDefault404Response(): Response {
+  return new Response(null, {
+    status: 404,
+    statusText: 'Not Found',
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'X-Robots-Tag': 'noindex, nofollow',
+    },
+  });
+}
+
+async function handleNotFound(
+  appConfig: AppConfig,
+  url: URL,
+  request: Request
+): Promise<Response> {
+  const notFoundConf = appConfig.notFound || {};
+  const targetTemplate = notFoundConf.target;
+
+  // 如果没有配置 404 目标地址，不使用任何外部回路，直接返回默认 404 页面
+  if (!targetTemplate) {
+    return createDefault404Response();
+  }
+
+  const resolved404Url = resolveUrlTemplate(targetTemplate, url);
+
+  if (notFoundConf.mode === 'proxy') {
+    try {
+      const upstreamRes = await fetch(resolved404Url, {
+        headers: {
+          'User-Agent':
+            request.headers.get('User-Agent') || 'Cloudflare-Worker-ShortLink',
+          Accept: request.headers.get('Accept') || '*/*',
+        },
+      });
+      return new Response(upstreamRes.body, {
+        status: 404,
+        headers: {
+          'Content-Type':
+            upstreamRes.headers.get('Content-Type') ||
+            'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store',
+        },
+      });
+    } catch {
+      // If proxy fetch fails, fallback to tiered redirect response with status 404
+      return createTieredRedirectResponse(resolved404Url, 404);
+    }
+  }
+
+  // 状态码忠实返回 404，并通过 HTML Meta Refresh + JS Replace 执行客户端重定向
+  return createTieredRedirectResponse(resolved404Url, 404);
 }
 
 /**
@@ -260,37 +313,7 @@ export function createShortLinkHandler(
 
     // 3. If no route matches, trigger 404 fallback
     if (!matched) {
-      const notFoundConf = appConfig.notFound || {};
-      const targetTemplate =
-        notFoundConf.target || 'https://stevezmt.top/404?from=${FULL_URL}';
-      const resolved404Url = resolveUrlTemplate(targetTemplate, url);
-
-      if (notFoundConf.mode === 'proxy') {
-        try {
-          const upstreamRes = await fetch(resolved404Url, {
-            headers: {
-              'User-Agent':
-                request.headers.get('User-Agent') || 'Cloudflare-Worker-ShortLink',
-              Accept: request.headers.get('Accept') || '*/*',
-            },
-          });
-          return new Response(upstreamRes.body, {
-            status: 404,
-            headers: {
-              'Content-Type':
-                upstreamRes.headers.get('Content-Type') ||
-                'text/html; charset=utf-8',
-              'Cache-Control': 'no-cache, no-store',
-            },
-          });
-        } catch {
-          // If proxy fetch fails, fallback gracefully to 302 redirect
-          return createTieredRedirectResponse(resolved404Url, 302);
-        }
-      }
-
-      // Default redirect mode
-      return createTieredRedirectResponse(resolved404Url, 302);
+      return handleNotFound(appConfig, url, request);
     }
 
     const matchedRoute = matched.route || matched;
@@ -437,13 +460,19 @@ export function createShortLinkHandler(
     }
 
     // 7. Build final destination with dynamic param interpolation, merged query params & default UTM tags
-    const finalDestination = buildDestinationUrl(
-      rawTarget,
-      url,
-      matchedRoute.utm,
-      params,
-      matches
-    );
+    let finalDestination: string;
+    try {
+      finalDestination = buildDestinationUrl(
+        rawTarget,
+        url,
+        matchedRoute.utm,
+        params,
+        matches
+      );
+    } catch {
+      // Define Errors Out of Existence: gracefully fall back to 404 on malformed target URLs
+      return handleNotFound(appConfig, url, request);
+    }
 
     const isSensitive = !!(
       matchedRoute.auth ||
@@ -451,10 +480,16 @@ export function createShortLinkHandler(
       (matchedRoute.rules && matchedRoute.rules.length > 0)
     );
 
-    // 8. Return 3-tier redirect response (HTTP 302 + Meta refresh + inline script)
+    // 8. Return 3-tier redirect response
+    // RFC 7231 Section 6.4.4: 303 See Other ensures browser POST redirect switches to GET
+    const redirectStatus =
+      request.method === 'POST'
+        ? 303
+        : (matchedRoute.redirectStatus || 302);
+
     return createTieredRedirectResponse(
       finalDestination,
-      matchedRoute.redirectStatus || 302,
+      redirectStatus,
       undefined,
       isSensitive
     );

@@ -145,13 +145,62 @@ links: {
 - **跳转**：`https://stevezmt.top/blog/post/2026/09/release-notes`
 
 ### 4.5 正则表达式高级匹配 (`regex:`)
-对于对字符集、格式有严格要求的复杂批量映射，可直接使用 `regex:` 开头声明原生正则，并在目标中使用 `$1`、`$2` 映射捕获组：
+对于对字符集、数字范围、层级结构有严格要求的复杂批量映射，可以直接使用 `regex:` 开头（或以 `^` 开头）声明原生正则表达式，并在目标 URL 中使用 `$1`、`$2` 提取捕获组。
+
+路由引擎会自动智能判定匹配范围：
+1. **纯路径正则（Path-only Regex）**：
+   - 当正则以 `^/` 或 `/` 开头时（或斜杠前不含点号主机名），引擎将自动比对 **`url.pathname`**。
+   - 适用于跨所有域名通用的路径级规则。
+2. **主机+路径全量正则（Host-Specific Regex）**：
+   - 当正则前缀包含域名点号（如 `^sub\\.domain\\.com/`）时，引擎将自动比对完整的 **`url.hostname + url.pathname`**。
+   - 适用于限定在特定子域名或多租户域名下的正则过滤。
+
+#### 常见应用场景与示例配置
+
+##### 1. 严格数字 ID 映射与分组提取
 ```typescript
 links: {
-  // 仅匹配字母、数字、连字符组成的单层 Slug，包含斜杠则不匹配：
-  'regex:^blog\\.[^/]+/([a-zA-Z0-9_-]+)$': 'https://stevezmt.top/blog/post/$1',
+  // 匹配形如 /item/12345，严格要求为纯数字
+  'regex:^/item/(\\d+)$': 'https://store.example.com/products/$1',
 }
 ```
+- **访问**：`https://example.com/item/8848`
+- **跳转**：`https://store.example.com/products/8848`
+- **非数字输入**：`https://example.com/item/abc` 自动忽略并进入 404 流程。
+
+##### 2. 年/月/日归档与版本化 API 路由
+```typescript
+links: {
+  // 提取年、月与文章 slug 三个独立捕获组 ($1, $2, $3)
+  'regex:^/blog/(\\d{4})/(\\d{2})/(.+)$': 'https://example.com/archives/$1-$2/$3',
+  // 匹配版本化接口转发
+  'regex:^/api/v(\\d+)/(.*)$': 'https://api-upstream.example.com/v$1/$2',
+}
+```
+- **访问**：`https://example.com/blog/2026/09/release-notes`
+- **跳转**：`https://example.com/archives/2026-09/release-notes`
+
+##### 3. 严格限制 Slug 字符集（防恶意路径穿越）
+```typescript
+links: {
+  // 仅允许字母、数字、连字符组成的单层 Slug，包含斜杠或非法符号则不匹配：
+  'regex:^/user/([a-zA-Z0-9_-]+)$': 'https://github.com/$1',
+}
+```
+
+##### 4. 特定子域名专属正则 (Host-specific)
+```typescript
+links: {
+  // 仅在 s.stevezmt.top 子域名下匹配以 doc- 开头的路径：
+  'regex:^s\\.stevezmt\\.top/doc-([0-9a-f]{8})$': 'https://docs.example.com/view/$1',
+}
+```
+
+> [!TIP]
+> **正则书写要点**：
+> - 引擎内部默认以不区分大小写模式（`i` 标志）编译正则。
+> - 在 TypeScript 字符串字面量中，正则的反斜杠需要双写转义（如 `\\d` 表示数字，`\\.` 表示点号）。
+> - 正则的优先级打分居于第四阶梯（兜底匹配），当存在具体的精确路径（如 `/item/new`）时，精确路径将自动优先于 `regex:^/item/(\\d+)` 执行。
 
 ### 4.6 特异性打分与优先级裁决
 当多条规则同时能匹配某个请求时，路由引擎会根据**特异性权重得分（Specificity Score）**自动进行降序匹配，确保逻辑最具体的规则优先执行：
@@ -520,4 +569,4 @@ Worker 即可秒级上线至全球数百个边缘节点！
 
 
 # 许可
-[]
+[你丫爱咋整咋整许可证](LICENSE)

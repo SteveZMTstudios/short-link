@@ -220,7 +220,7 @@ describe('Password Protection & HTTP Basic Auth', () => {
     const htmlBad = await resBad.text();
     expect(htmlBad).toContain('访问密码错误，请重新输入');
 
-    // 2. POST 正确密码 -> 302 重定向到真实目标
+    // 2. POST 正确密码 -> 303 See Other 规范重定向到真实目标 (保证客户端切换为 GET)
     const formDataGood = new FormData();
     formDataGood.set('password', 'vip-pass-2026');
     const resGood = await handler(
@@ -230,7 +230,7 @@ describe('Password Protection & HTTP Basic Auth', () => {
         body: formDataGood,
       })
     );
-    expect(resGood.status).toBe(302);
+    expect(resGood.status).toBe(303);
     expect(resGood.headers.get('Location')).toContain('https://stevezmt.top/vip-landing');
   });
 

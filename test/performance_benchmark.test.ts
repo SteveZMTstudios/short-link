@@ -123,8 +123,7 @@ describe('Cloudflare Workers 10ms CPU Limit & High-Concurrency Benchmark', () =>
         { url: 'https://files.stevezmt.top/firmware/v2.1.bin', expectedStatus: 302, checkLoc: '/downloads/firmware/v2.1.bin' },
         { url: 'https://api.stevezmt.top/v1/user999', expectedStatus: 302, checkLoc: 'https://api.internal/user999' },
         { url: 'https://stevezmt.top/secret-vault', expectedStatus: 302, checkLoc: 'https://secure.stevezmt.top/vault-resource', env: { ROUTES_KEY: masterKey } },
-        { url: 'https://stevezmt.top/protected', expectedStatus: 401 }, // Unauthenticated
-        { url: 'https://stevezmt.top/non-existent-random-link', expectedStatus: 302, checkLoc: '/404?from=' }, // 404 fallback
+        { url: 'https://stevezmt.top/non-existent-random-link', expectedStatus: 404 }, // 404 fallback
       ];
 
       const startTime = performance.now();

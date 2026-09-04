@@ -32,14 +32,18 @@ export function safeJsonForScript(str: string): string {
  */
 export function isSafeRedirectUrl(url: string): boolean {
   const trimmed = url.trim();
-  if (/^(?:javascript|data|vbscript):/i.test(trimmed)) {
+  if (/^(?:javascript|data|vbscript|blob|file):/i.test(trimmed)) {
     return false;
   }
   // Block protocol-relative URLs (e.g. //attacker.com)
   if (trimmed.startsWith('//')) {
     return false;
   }
-  return /^https?:\/\//i.test(trimmed) || (trimmed.startsWith('/') && !trimmed.startsWith('//'));
+  return (
+    /^https?:\/\//i.test(trimmed) ||
+    /^(?:tg|weixin|bilibili|mailto|tel|sms|magnet|itms-apps|intent|applink):/i.test(trimmed) ||
+    (trimmed.startsWith('/') && !trimmed.startsWith('//'))
+  );
 }
 
 /**
@@ -70,85 +74,24 @@ export function createTieredRedirectResponse(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="refresh" content="0;url=${safeUrl}">
-  <title>Redirecting...</title>
-  <style>
-    :root {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
-    }
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      padding: 1rem;
-      box-sizing: border-box;
-      text-align: center;
-    }
-    .card {
-      background: rgba(30, 41, 59, 0.7);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      padding: 2.5rem;
-      max-width: 480px;
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
-    }
-    .spinner {
-      width: 40px;
-      height: 40px;
-      margin: 0 auto 1.5rem;
-      border: 3px solid rgba(255, 255, 255, 0.1);
-      border-top-color: #38bdf8;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    h1 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin: 0 0 0.5rem;
-      color: #f8fafc;
-    }
-    p {
-      font-size: 0.95rem;
-      color: #94a3b8;
-      margin: 0 0 1.5rem;
-      word-break: break-all;
-    }
-    a {
-      display: inline-block;
-      background: #0284c7;
-      color: #ffffff;
-      padding: 0.6rem 1.25rem;
-      border-radius: 8px;
-      text-decoration: none;
-      font-weight: 500;
-      transition: background 0.2s ease;
-    }
-    a:hover {
-      background: #0369a1;
-    }
-  </style>
+  <title>Redirecting…</title>
 </head>
 <body>
-  <div class="card">
-    <div class="spinner"></div>
-    <h1>Redirecting you...</h1>
-    <p>If not redirected automatically, please click below:</p>
-    <a href="${safeUrl}" id="redirect-link" rel="noreferrer">Continue to destination</a>
+  <div id="fallback" style="display:none;">
+    <p>If not redirected automatically, please click <a href="${safeUrl}">here</a>.</p>
   </div>
+  <noscript>
+    <p>If not redirected automatically, please click <a href="${safeUrl}">here</a>.</p>
+  </noscript>
   <script>
     try {
       window.location.replace(${jsSafeUrl});
-    } catch (e) {
+    } catch (_) {
       window.location.href = ${jsSafeUrl};
     }
+    setTimeout(function () {
+      document.getElementById('fallback').style.display = 'block';
+    }, 3000);
   </script>
 </body>
 </html>`;

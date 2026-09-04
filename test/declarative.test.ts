@@ -131,8 +131,8 @@ describe('Declarative Configuration & Centralized Domain Settings', () => {
 
     const resOther = await handler(new Request('https://other.stevezmt.top/blog/my-post'));
     // Should not match "s:"
-    expect(resOther.status).toBe(302);
-    expect(resOther.headers.get('Location')).toContain('/404?from=');
+    expect(resOther.status).toBe(404);
+    expect(resOther.headers.get('Location')).toBeNull();
   });
 
   it('allows shorthand subdomain "s:/path" to adapt automatically when domain is omitted', async () => {

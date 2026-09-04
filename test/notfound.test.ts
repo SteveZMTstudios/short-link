@@ -14,7 +14,7 @@ describe('Custom 404 Handling', () => {
     const nonExistentUrl = 'https://s.stevezmt.top/unknown/page?q=1';
     const response = await handler(new Request(nonExistentUrl));
 
-    expect(response.status).toBe(302);
+    expect(response.status).toBe(404);
     const location = response.headers.get('Location');
     expect(location).toBe(
       `https://stevezmt.top/404?from=${encodeURIComponent(nonExistentUrl)}`
@@ -24,6 +24,19 @@ describe('Custom 404 Handling', () => {
     const html = await response.text();
     expect(html).toContain('<meta http-equiv="refresh"');
     expect(html).toContain('window.location.replace');
+  });
+
+  it('renders default 404 page when no target is configured without looping back to author domain', async () => {
+    const handler = createShortLinkHandler({
+      routes: [],
+      // no notFound configuration at all
+    });
+
+    const response = await handler(new Request('https://example.com/unmapped'));
+    expect(response.status).toBe(404);
+    expect(response.headers.get('Location')).toBeNull();
+    const body = await response.text();
+    expect(body).toBe('');
   });
 
   it('supports proxy mode returning status 404 and upstream body', async () => {

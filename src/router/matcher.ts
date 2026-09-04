@@ -91,9 +91,16 @@ export function compilePattern(pattern: string): CompiledPattern {
     const rawRegex = trimmed.startsWith('regex:')
       ? trimmed.slice(6).trim()
       : trimmed;
+
+    // Detect whether regex targets full host+path (e.g. ^sub\.domain\.com/.*) or path only (^/api/.*)
+    const cleanForCheck = rawRegex.replace(/^\^/, '');
+    const firstSlash = cleanForCheck.indexOf('/');
+    const hostSegment = firstSlash === -1 ? cleanForCheck : cleanForCheck.slice(0, firstSlash);
+    const isHostSpecific = !cleanForCheck.startsWith('/') && hostSegment.includes('.');
+
     const compiled: CompiledPattern = {
       regex: new RegExp(rawRegex, 'i'),
-      isHostSpecific: true,
+      isHostSpecific,
       paramNames: [],
     };
     patternCache.set(trimmed, compiled);

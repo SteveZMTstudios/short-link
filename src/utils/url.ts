@@ -5,6 +5,22 @@
 
 import { UtmConfig } from '../types';
 
+function substituteParams(text: string, params: Record<string, string>, encode: boolean): string {
+  let res = text.replace(/:([a-zA-Z0-9_]+)/g, (fullMatch, name) => {
+    if (params[name] !== undefined) {
+      return encode ? encodeURIComponent(params[name]) : params[name];
+    }
+    return fullMatch;
+  });
+  res = res.replace(/\$\{([a-zA-Z0-9_]+)\}/g, (fullMatch, name) => {
+    if (params[name] !== undefined) {
+      return encode ? encodeURIComponent(params[name]) : params[name];
+    }
+    return fullMatch;
+  });
+  return res;
+}
+
 /**
  * Interpolates dynamic parameters (:name, ${name}), capture groups ($1, $2),
  * and wildcards (*) into a destination target URL.
@@ -26,31 +42,30 @@ export function interpolateTargetUrl(
       return fullMatch;
     });
 
-    // Replace literal '*' in target with first wildcard match if present
-    if (matches[1] !== undefined && result.includes('*')) {
-      const wildcardVal = matches[1];
-      result = result
-        .replace(/\/\*/g, () => '/' + wildcardVal)
-        .replace(/\*/g, () => wildcardVal);
+    // Replace literal '*' in target with wildcard match if present.
+    // When multiple captures exist (e.g. *.domain/* -> matches[1]=subdomain, matches[2]=path),
+    // target's '*' represents the path wildcard capture (the last match group).
+    if (result.includes('*')) {
+      const wildcardVal = matches.length > 2 ? matches[matches.length - 1] : matches[1];
+      if (wildcardVal !== undefined) {
+        result = result
+          .replace(/\/\*/g, () => '/' + wildcardVal)
+          .replace(/\*/g, () => wildcardVal);
+      }
     }
   }
 
-  // 2. Substitute :name from named parameters
+  // 2. Substitute :name / ${name} from named parameters
+  // Query parameters are URL-encoded to prevent query structure injection
   if (params) {
-    result = result.replace(/:([a-zA-Z0-9_]+)/g, (fullMatch, name) => {
-      if (params[name] !== undefined) {
-        return params[name];
-      }
-      return fullMatch;
-    });
-
-    // Also support ${name} syntax
-    result = result.replace(/\$\{([a-zA-Z0-9_]+)\}/g, (fullMatch, name) => {
-      if (params[name] !== undefined) {
-        return params[name];
-      }
-      return fullMatch;
-    });
+    const qIndex = result.indexOf('?');
+    if (qIndex === -1) {
+      result = substituteParams(result, params, false);
+    } else {
+      const beforeQuery = result.slice(0, qIndex);
+      const afterQuery = result.slice(qIndex);
+      result = substituteParams(beforeQuery, params, false) + substituteParams(afterQuery, params, true);
+    }
   }
 
   return result;
@@ -76,7 +91,8 @@ export function buildDestinationUrl(
   let interpolatedTarget = interpolateTargetUrl(targetUrl, params, matches).trim();
 
   // If target is a bare domain (e.g. "baidu.com" or "example.com/page"), auto-prepend https://
-  if (!/^https?:\/\//i.test(interpolatedTarget) && !interpolatedTarget.startsWith('/')) {
+  // Do NOT prepend https:// if it already has a protocol scheme (e.g. http:, https:, tg:, mailto:) or starts with '/'
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(interpolatedTarget) && !interpolatedTarget.startsWith('/')) {
     interpolatedTarget = 'https://' + interpolatedTarget;
   }
 

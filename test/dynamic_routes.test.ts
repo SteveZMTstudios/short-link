@@ -58,8 +58,8 @@ describe('Dynamic Batch & Regex Route Forwarding', () => {
 
     // Non-matching path (slashes inside) goes to 404
     const res404 = await handler(new Request('https://blog.stevezmt.top/invalid/nested'));
-    expect(res404.status).toBe(302);
-    expect(res404.headers.get('Location')).toContain('/404?from=');
+    expect(res404.status).toBe(404);
+    expect(res404.headers.get('Location')).toBeNull();
   });
 
   it('handles multi-segment parameters (:category/:slug) and forwards query strings', async () => {
