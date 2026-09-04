@@ -115,6 +115,30 @@ describe('Declarative Configuration & Centralized Domain Settings', () => {
     expect(desktopRes.headers.get('Location')).toContain('desktop-setup.exe');
   });
 
+  it('preserves route parameters, query parameters, and UTM tags on mobile redirection', async () => {
+    const handler = createShortLinkHandler({
+      settings: {
+        defaultUtm: { utm_source: 'shortlink' },
+      },
+      links: {
+        '/post/:slug': {
+          target: 'https://example.com/posts/:slug',
+          mobile: 'https://m.example.com/posts/:slug',
+        },
+      },
+    });
+
+    const mobileReq = new Request('https://example.com/post/hello-world?from=share', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0)' },
+    });
+    const mobileRes = await handler(mobileReq);
+    expect(mobileRes.status).toBe(302);
+    const location = mobileRes.headers.get('Location') || '';
+    expect(location).toContain('https://m.example.com/posts/hello-world');
+    expect(location).toContain('from=share');
+    expect(location).toContain('utm_source=shortlink');
+  });
+
   it('binds shorthand subdomain "s:/path" to central domain', async () => {
     const handler = createShortLinkHandler({
       settings: {

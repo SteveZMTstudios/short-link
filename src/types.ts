@@ -1,6 +1,6 @@
 /**
  * Type definitions for the short-link service.
- * Designed with deep module philosophy:
+ *
  * - Simple, declarative interface for daily usage
  * - Rich capabilities (salted SHA-256 password hashes, symmetric AES-GCM encryption, bots, TLS)
  */
@@ -16,16 +16,11 @@ export interface UtmConfig {
 
 export interface AuthConfig {
   realm?: string;
-  useUnifiedPassword?: boolean;
   password?: string;
   passwordHash?: string;
   salt?: string;
   users?: Record<string, string>;
-  /**
-   * 'page': Elegant standalone HTML password unlock page (default, no browser username prompt)
-   * 'basic': Browser-native HTTP Basic Auth modal with Username + Password fields
-   */
-  mode?: 'page' | 'basic';
+  useMasterPassword?: boolean;
 }
 
 export interface RouteContext {
@@ -61,8 +56,8 @@ export interface LinkOptions {
   target: string | ((ctx: RouteContext) => string | Promise<string>);
   /**
    * Password protection:
-   * - true: Uses unified password from .env / environment variables (ROUTES_KEY or AUTH_PASSWORD)
-   * - string: Specific password or salted hash ('sha256:<hex>')
+   * String containing plaintext password or salted hash ('sha256:<hex>').
+   * Authenticated via standard HTTP Basic Auth (username is ignored; password is required).
    */
   password?: string | boolean;
   passwordHash?: string;

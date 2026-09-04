@@ -104,10 +104,14 @@ export class CompositeRouteProvider implements RouteProvider {
     const baseConfig: ShortLinkConfig = Array.isArray(base) ? { routes: base } : base;
     const dynamicConfig: ShortLinkConfig = Array.isArray(dynamic) ? { routes: dynamic } : dynamic;
 
-    // Dynamic routes override base routes with the same pattern
+    // Dynamic routes/links override base routes/links with the same pattern
+    const dynamicLinks = dynamicConfig.links || {};
     const dynamicRoutes = dynamicConfig.routes || [];
     const baseRoutes = baseConfig.routes || [];
-    const dynamicPatterns = new Set(dynamicRoutes.map((r) => r.pattern));
+    const dynamicPatterns = new Set([
+      ...dynamicRoutes.map((r) => r.pattern),
+      ...Object.keys(dynamicLinks),
+    ]);
     const mergedRoutes = [
       ...dynamicRoutes,
       ...baseRoutes.filter((r) => !dynamicPatterns.has(r.pattern)),
@@ -118,7 +122,7 @@ export class CompositeRouteProvider implements RouteProvider {
       ...dynamicConfig,
       settings: { ...baseConfig.settings, ...dynamicConfig.settings },
       links: { ...baseConfig.links, ...dynamicConfig.links },
-      routes: mergedRoutes,
+      routes: mergedRoutes.length > 0 ? mergedRoutes : undefined,
     };
   }
 }

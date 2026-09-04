@@ -32,10 +32,8 @@ import {
 import { buildDestinationUrl, resolveUrlTemplate } from './utils/url';
 import { createTieredRedirectResponse, createRobotsTxtResponse } from './utils/response';
 import {
-  verifyBasicAuth,
-  verifyPassword,
+  authenticateRequest,
   createUnauthorizedResponse,
-  createPasswordPromptResponse,
 } from './auth/basicAuth';
 import {
   requireMinTls,
@@ -112,8 +110,18 @@ export function normalizeConfig(
       }
 
       // Declarative: mobile redirection
+      // Integrate into target resolution pipeline so parameters (:slug, $1), Query params, and UTM are fully preserved
+      let targetResolver = val.target;
       if (val.mobile) {
-        rules.push(redirectBrowser(/iPhone|iPad|Android/i, val.mobile));
+        const baseTarget = val.target;
+        const mobileTarget = val.mobile;
+        targetResolver = (ctx: RouteContext) => {
+          const ua = ctx.request.headers.get('user-agent') || '';
+          if (/iPhone|iPad|Android/i.test(ua)) {
+            return mobileTarget;
+          }
+          return typeof baseTarget === 'function' ? baseTarget(ctx) : baseTarget;
+        };
       }
 
       // Custom escape hatch rules
@@ -125,9 +133,14 @@ export function normalizeConfig(
       let auth = val.auth;
       if (val.password === false) {
         auth = undefined;
-      } else if (val.password !== undefined || val.passwordHash !== undefined) {
+      } else if (val.password === true) {
         auth = {
-          useUnifiedPassword: val.password === true,
+          useMasterPassword: true,
+          salt: val.salt,
+          ...val.auth,
+        };
+      } else if (typeof val.password === 'string' || val.passwordHash !== undefined) {
+        auth = {
           password: typeof val.password === 'string' ? val.password : undefined,
           passwordHash: val.passwordHash,
           salt: val.salt,
@@ -137,7 +150,7 @@ export function normalizeConfig(
 
       routes.push({
         pattern,
-        target: val.target,
+        target: targetResolver,
         redirectStatus: val.redirectStatus,
         utm: { ...defaultUtm, ...val.utm },
         auth,
@@ -198,19 +211,24 @@ async function handleNotFound(
   const targetTemplate = notFoundConf.target;
 
   // 如果没有配置 404 目标地址，不使用任何外部回路，直接返回默认 404 页面
-  if (!targetTemplate) {
+  if (!targetTemplate || !targetTemplate.trim()) {
     return createDefault404Response();
   }
 
   const resolved404Url = resolveUrlTemplate(targetTemplate, url);
 
   if (notFoundConf.mode === 'proxy') {
+    // Prevent recursive proxy loops
+    if (request.headers.get('X-ShortLink-Proxy')) {
+      return createDefault404Response();
+    }
     try {
       const upstreamRes = await fetch(resolved404Url, {
         headers: {
           'User-Agent':
             request.headers.get('User-Agent') || 'Cloudflare-Worker-ShortLink',
           Accept: request.headers.get('Accept') || '*/*',
+          'X-ShortLink-Proxy': '1',
         },
       });
       return new Response(upstreamRes.body, {
@@ -363,74 +381,20 @@ export function createShortLinkHandler(
       }
     }
 
-    // 5. Password / Auth protection
+    // 5. Password / Auth protection (Standard HTTP Basic Auth, username ignored)
     if (matchedRoute.auth) {
       const defaultSalt =
         settings?.salt || settings?.domain || url.hostname;
-      const unifiedPassword = resolveMasterKey(env);
-
-      let isAuthenticated = false;
-      let candidatePassword: string | undefined;
-
-      const authHeader = request.headers.get('Authorization');
-      if (authHeader && authHeader.startsWith('Basic ')) {
-        isAuthenticated = await verifyBasicAuth(
-          request,
-          matchedRoute.auth,
-          defaultSalt,
-          unifiedPassword
-        );
-      } else {
-        // Support URL query param (e.g. ?pwd=123 or ?password=123)
-        const queryPwd = url.searchParams.get('pwd') || url.searchParams.get('password');
-        if (queryPwd) {
-          candidatePassword = queryPwd;
-        } else if (request.method === 'POST') {
-          // Support standalone HTML password form submission
-          try {
-            const contentType = request.headers.get('content-type') || '';
-            if (
-              contentType.includes('application/x-www-form-urlencoded') ||
-              contentType.includes('multipart/form-data')
-            ) {
-              const formData = await request.formData();
-              candidatePassword =
-                ((formData.get('password') || formData.get('pwd')) as string) || undefined;
-            } else if (contentType.includes('application/json')) {
-              const bodyJson = (await request.json()) as { password?: string; pwd?: string };
-              candidatePassword = bodyJson.password || bodyJson.pwd;
-            }
-          } catch (_) {}
-        }
-
-        if (candidatePassword !== undefined) {
-          isAuthenticated = await verifyPassword(
-            candidatePassword,
-            matchedRoute.auth,
-            defaultSalt,
-            unifiedPassword
-          );
-        }
-      }
-
-      if (!isAuthenticated) {
-        // Determine whether to show standalone HTML password unlock page or HTTP 401 Basic Auth modal
-        const isBrowserRequest = request.headers.get('Accept')?.includes('text/html');
-        const showPasswordPage =
-          matchedRoute.auth.mode === 'page' ||
-          (matchedRoute.auth.mode !== 'basic' && isBrowserRequest);
-
-        if (showPasswordPage) {
-          const hasFailedAttempt =
-            candidatePassword !== undefined ||
-            !!(authHeader && authHeader.startsWith('Basic '));
-          return createPasswordPromptResponse({
-            errorMessage: hasFailedAttempt ? '访问密码错误，请重新输入' : undefined,
-            realm: matchedRoute.auth.realm,
-          });
-        }
-
-        return createUnauthorizedResponse(matchedRoute.auth.realm);
+      const masterKey = resolveMasterKey(env);
+      const authResult = await authenticateRequest(
+        request,
+        url,
+        matchedRoute.auth,
+        defaultSalt,
+        masterKey
+      );
+      if (!authResult.authenticated) {
+        return authResult.response || createUnauthorizedResponse(matchedRoute.auth.realm);
       }
     }
 
@@ -440,8 +404,11 @@ export function createShortLinkHandler(
         ? await matchedRoute.target(routeContext)
         : matchedRoute.target;
 
+    let wasEncrypted = isEncryptedPayload(matchedRoute.target);
+
     // Decrypt encrypted destination targets on demand
     if (isEncryptedPayload(rawTarget)) {
+      wasEncrypted = true;
       const encryptionKey = resolveMasterKey(env);
       if (!encryptionKey) {
         return new Response(
@@ -474,11 +441,9 @@ export function createShortLinkHandler(
       return handleNotFound(appConfig, url, request);
     }
 
-    const isSensitive = !!(
-      matchedRoute.auth ||
-      isEncryptedPayload(matchedRoute.target) ||
-      (matchedRoute.rules && matchedRoute.rules.length > 0)
-    );
+    // Only routes with an access password (auth) must NOT be cached.
+    // ROUTE_KEY protects routing rules from being dumped in one click; encrypted targets without password remain edge-cacheable.
+    const isSensitive = !!matchedRoute.auth;
 
     // 8. Return 3-tier redirect response
     // RFC 7231 Section 6.4.4: 303 See Other ensures browser POST redirect switches to GET

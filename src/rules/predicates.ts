@@ -130,9 +130,12 @@ export function blockUserAgent(
 ): Rule {
   return (ctx: RouteContext): RuleResult => {
     const ua = ctx.request.headers.get('user-agent') || '';
+    const uaLower = ua.toLowerCase();
     for (const pattern of patterns) {
       const isMatch =
-        pattern instanceof RegExp ? pattern.test(ua) : ua.includes(pattern);
+        pattern instanceof RegExp
+          ? pattern.test(ua)
+          : uaLower.includes(pattern.toLowerCase());
       if (isMatch) {
         return (
           onBlock ||

@@ -1,6 +1,13 @@
 /**
  * HTTP Basic Authentication handler with salted SHA-256 support.
  * Validates credentials against route configuration and produces RFC-compliant 401 responses.
+ *
+ * Design:
+ * - RFC 7617 HTTP Basic Auth only (zero custom HTML prompt pages or JS prompts)
+ * - Ignores username; only validates password field
+ * - Informs visitor in the WWW-Authenticate realm that username can be anything
+ * - Constant-time comparison to prevent timing attacks
+ * - Pure cryptographic hash verification (raw hash inputs cannot authenticate)
  */
 
 import { AuthConfig } from '../types';
@@ -35,75 +42,87 @@ export async function hashPasswordWithSalt(password: string, salt = ''): Promise
 }
 
 /**
- * Parses and verifies Basic Auth credentials from incoming Request.
- * Supports:
- * - Unified master password (from env.AUTH_PASSWORD or env.ROUTES_KEY)
- * - Domain-salted SHA-256 hashes ('sha256:<hex>' or passwordHash)
- * - Plaintext passwords (for backwards compatibility)
+ * Decodes base64 credentials supporting standard UTF-8 (RFC 7617 section 2.1).
+ * Prevents Latin-1 byte truncation or corruption on multi-byte international passwords.
  */
+export function decodeBase64Utf8(base64: string): string {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    // Fallback to Latin-1 binary string if invalid UTF-8
+    return binary;
+  }
+}
+
 /**
  * Verifies a single password string against the provided route AuthConfig.
- * Used by both HTTP Basic Auth and the standalone web password unlock form.
+ * Strictly prevents submitting raw hashes: if expected is a hash, input password MUST be hashed.
  */
 export async function verifyPassword(
   password: string,
   config: AuthConfig,
   defaultSalt = '',
-  unifiedPassword?: string,
-  username?: string
+  masterPassword?: string
 ): Promise<boolean> {
   const salt = config.salt || defaultSalt;
 
-  // 1. Unified password check (if route enabled unified password from .env)
-  if (config.useUnifiedPassword || (config.password === undefined && !config.passwordHash && !config.users)) {
-    if (unifiedPassword) {
-      if (await safeCompare(password, unifiedPassword)) {
-        return true;
-      }
-      const calculatedHash = await hashPasswordWithSalt(password, salt);
-      if (await safeCompare(calculatedHash, unifiedPassword.replace(/^sha256:/i, '').toLowerCase())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // 2. Explicit passwordHash check
+  // 1. Explicit passwordHash check ('sha256:<hex>' or raw hex)
   if (config.passwordHash !== undefined) {
     const cleanExpected = config.passwordHash.replace(/^sha256:/i, '').toLowerCase();
     const calculatedHash = await hashPasswordWithSalt(password, salt);
-    if (await safeCompare(calculatedHash, cleanExpected)) {
-      return true;
-    }
+    return safeCompare(calculatedHash, cleanExpected);
   }
 
-  // 3. Single password check (supports 'sha256:<hex>' or plaintext)
+  // 2. Password check (supports 'sha256:<hex>' hash or plaintext)
   if (config.password !== undefined) {
     if (config.password.toLowerCase().startsWith('sha256:')) {
       const cleanExpected = config.password.slice(7).toLowerCase();
       const calculatedHash = await hashPasswordWithSalt(password, salt);
-      if (await safeCompare(calculatedHash, cleanExpected)) {
-        return true;
-      }
-    } else {
-      if (await safeCompare(password, config.password)) {
-        return true;
+      return safeCompare(calculatedHash, cleanExpected);
+    }
+    // Plaintext password comparison
+    if (await safeCompare(password, config.password)) {
+      return true;
+    }
+  }
+
+  // 3. Multi-user dictionary check (username ignored: validates password against any configured user)
+  if (config.users && typeof config.users === 'object') {
+    for (const expected of Object.values(config.users)) {
+      if (typeof expected === 'string') {
+        if (expected.toLowerCase().startsWith('sha256:')) {
+          const cleanExpected = expected.slice(7).toLowerCase();
+          const calculatedHash = await hashPasswordWithSalt(password, salt);
+          if (await safeCompare(calculatedHash, cleanExpected)) {
+            return true;
+          }
+        } else {
+          if (await safeCompare(password, expected)) {
+            return true;
+          }
+        }
       }
     }
   }
 
-  // 4. Multi-user dictionary check
-  if (config.users && username && Object.prototype.hasOwnProperty.call(config.users, username)) {
-    const expected = config.users[username];
-    if (expected.toLowerCase().startsWith('sha256:')) {
-      const cleanExpected = expected.slice(7).toLowerCase();
-      const calculatedHash = await hashPasswordWithSalt(password, salt);
-      if (await safeCompare(calculatedHash, cleanExpected)) {
-        return true;
-      }
-    } else {
-      if (await safeCompare(password, expected)) {
-        return true;
+  // 4. Master password check (for routes configured with password: true or useMasterPassword: true)
+  if (config.useMasterPassword || (config.password === undefined && config.passwordHash === undefined && !config.users)) {
+    if (masterPassword) {
+      if (masterPassword.toLowerCase().startsWith('sha256:')) {
+        const cleanExpected = masterPassword.slice(7).toLowerCase();
+        const calculatedHash = await hashPasswordWithSalt(password, salt);
+        if (await safeCompare(calculatedHash, cleanExpected)) {
+          return true;
+        }
+      } else {
+        if (await safeCompare(password, masterPassword)) {
+          return true;
+        }
       }
     }
   }
@@ -113,12 +132,13 @@ export async function verifyPassword(
 
 /**
  * Parses and verifies Basic Auth credentials from incoming Request.
+ * Usernames are completely ignored; only the password field is validated.
  */
 export async function verifyBasicAuth(
   request: Request,
   config: AuthConfig,
   defaultSalt = '',
-  unifiedPassword?: string
+  masterPassword?: string
 ): Promise<boolean> {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Basic ')) {
@@ -128,35 +148,35 @@ export async function verifyBasicAuth(
   const base64Credentials = authHeader.slice(6).trim();
   let decoded: string;
   try {
-    decoded = atob(base64Credentials);
+    decoded = decodeBase64Utf8(base64Credentials);
   } catch {
     return false;
   }
 
   const separatorIndex = decoded.indexOf(':');
-  if (separatorIndex === -1) {
-    return false;
-  }
+  // Username is ignored per design: only password part is evaluated
+  const password = separatorIndex !== -1 ? decoded.substring(separatorIndex + 1) : decoded;
 
-  const username = decoded.substring(0, separatorIndex);
-  const password = decoded.substring(separatorIndex + 1);
-
-  return verifyPassword(password, config, defaultSalt, unifiedPassword, username);
+  return verifyPassword(password, config, defaultSalt, masterPassword);
 }
 
 /**
  * Creates an RFC-compliant HTTP 401 Unauthorized response with WWW-Authenticate header.
+ * Realm clearly communicates to visitor that username is ignored and only password is required.
  */
-export function createUnauthorizedResponse(realm = 'Protected Link'): Response {
+export function createUnauthorizedResponse(realm?: string): Response {
+  const baseRealm = realm ? realm.trim() : 'Protected Link';
+  const displayRealm = `${baseRealm} (Password required, username ignored)`;
   // HTTP header values must be ByteString (ASCII <= 255)
-  const asciiRealm = realm.replace(/[^\x20-\x7E]/g, '').trim() || 'Protected Link';
+  const asciiRealm = displayRealm.replace(/[^\x20-\x7E]/g, '').trim() || 'Protected Link - Password Required';
   const safeRealm = asciiRealm.replace(/"/g, '\\"');
+
   return new Response(
-    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>401 Unauthorized</title></head><body><h1>401 Unauthorized</h1><p>This link is password protected.</p></body></html>`,
+    '401 Unauthorized: Password required. Username is ignored and can be left blank or set to anything.\n',
     {
       status: 401,
       headers: {
-        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Type': 'text/plain; charset=utf-8',
         'WWW-Authenticate': `Basic realm="${safeRealm}", charset="UTF-8"`,
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'X-Robots-Tag': 'noindex, nofollow',
@@ -166,58 +186,35 @@ export function createUnauthorizedResponse(realm = 'Protected Link'): Response {
 }
 
 /**
- * Creates a minimal standalone HTML password unlock response.
- * Uses native browser prompt() when JS is enabled, and falls back to a clean,
- * unstyled semantic HTML form when JS is disabled or prompt is dismissed.
- * Zero bloated CSS, zero icons, zero theme maintenance.
+ * Deep Module: Authenticates an incoming request for a protected route.
+ * Checks Basic Auth header and optional ?pwd=/ ?password= query fallback.
  */
-export function createPasswordPromptResponse(options: {
-  errorMessage?: string;
-  realm?: string;
-} = {}): Response {
-  const errorHtml = options.errorMessage
-    ? `<p style="color:#dc2626;">${options.errorMessage}</p>`
-    : '';
+export async function authenticateRequest(
+  request: Request,
+  url: URL,
+  config: AuthConfig,
+  defaultSalt = '',
+  masterPassword?: string
+): Promise<{ authenticated: boolean; response?: Response }> {
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader && authHeader.startsWith('Basic ')) {
+    const ok = await verifyBasicAuth(request, config, defaultSalt, masterPassword);
+    if (ok) {
+      return { authenticated: true };
+    }
+  }
 
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>受保护的短链接</title>
-  <style>
-    body { font-family: system-ui, -apple-system, sans-serif; margin: 2rem auto; max-width: 360px; padding: 0 1rem; }
-    form { display: flex; flex-direction: column; gap: 0.75rem; }
-    input, button { font-size: 1rem; padding: 0.5rem; box-sizing: border-box; }
-  </style>
-</head>
-<body>
-  <h3>受保护的短链接</h3>
-  <p>${options.realm || '请输入访问密码：'}</p>
-  ${errorHtml}
-  <form method="POST">
-    <input type="password" name="password" autofocus required placeholder="访问密码">
-    <button type="submit">前往</button>
-  </form>
-  <script>
-    (function() {
-      var p = prompt("请输入访问密码：");
-      if (p) {
-        var f = document.forms[0];
-        f.password.value = p;
-        f.submit();
-      }
-    })();
-  </script>
-</body>
-</html>`;
+  // Convenience query param fallback: ?pwd= or ?password=
+  const queryPwd = url.searchParams.get('pwd') || url.searchParams.get('password');
+  if (queryPwd) {
+    const ok = await verifyPassword(queryPwd, config, defaultSalt, masterPassword);
+    if (ok) {
+      return { authenticated: true };
+    }
+  }
 
-  return new Response(html, {
-    status: 401,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'X-Robots-Tag': 'noindex, nofollow',
-    },
-  });
+  return {
+    authenticated: false,
+    response: createUnauthorizedResponse(config.realm),
+  };
 }

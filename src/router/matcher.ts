@@ -98,8 +98,16 @@ export function compilePattern(pattern: string): CompiledPattern {
     const hostSegment = firstSlash === -1 ? cleanForCheck : cleanForCheck.slice(0, firstSlash);
     const isHostSpecific = !cleanForCheck.startsWith('/') && hostSegment.includes('.');
 
+    let regex: RegExp;
+    try {
+      regex = new RegExp(rawRegex, 'i');
+    } catch {
+      // Define Errors Out of Existence: gracefully handle malformed regex from KV/external configs
+      regex = /(?!)/;
+    }
+
     const compiled: CompiledPattern = {
-      regex: new RegExp(rawRegex, 'i'),
+      regex,
       isHostSpecific,
       paramNames: [],
     };
@@ -131,6 +139,7 @@ export function compilePattern(pattern: string): CompiledPattern {
 
   // 3. Parse segments for :name and * wildcards
   const paramNames: string[] = [];
+  const usedGroupNames = new Set<string>();
   const parts = workPattern.split(/(:[a-zA-Z0-9_]+|\*)/g);
   let regexStr = '';
 
@@ -138,9 +147,15 @@ export function compilePattern(pattern: string): CompiledPattern {
     if (!part) continue;
 
     if (part.startsWith(':')) {
-      const name = part.slice(1);
-      paramNames.push(name);
-      regexStr += '(?<' + name + '>[^/?#]+)';
+      const rawName = part.slice(1);
+      let uniqueName = rawName;
+      let counter = 1;
+      while (usedGroupNames.has(uniqueName)) {
+        uniqueName = `${rawName}_${counter++}`;
+      }
+      usedGroupNames.add(uniqueName);
+      paramNames.push(rawName);
+      regexStr += '(?<' + uniqueName + '>[^/?#]+)';
     } else if (part === '*') {
       regexStr += '(.*)';
     } else {
@@ -149,17 +164,25 @@ export function compilePattern(pattern: string): CompiledPattern {
   }
 
   // Define Errors Out of Existence: allow optional trailing slash for non-wildcard terminal routes
-  // e.g. "/github" matches both "/github" and "/github/"
+  // e.g. "/github" matches both "/github" and "/github/", and "/docs/" matches "/docs" and "/docs/"
   if (!regexStr.endsWith('(.*)')) {
-    if (regexStr.endsWith('\\/')) {
-      regexStr = regexStr.slice(0, -2) + '\\/?';
-    } else if (!regexStr.endsWith('\\/?')) {
+    if (regexStr.endsWith('/') || regexStr.endsWith('\\/')) {
+      const cutLen = regexStr.endsWith('\\/') ? 2 : 1;
+      regexStr = regexStr.slice(0, -cutLen) + '\\/?';
+    } else if (!regexStr.endsWith('\\/?') && !regexStr.endsWith('/?')) {
       regexStr += '\\/?';
     }
   }
 
+  let regex: RegExp;
+  try {
+    regex = new RegExp(`^${regexStr}$`, 'i');
+  } catch {
+    regex = /(?!)/;
+  }
+
   const compiled: CompiledPattern = {
-    regex: new RegExp(`^${regexStr}$`, 'i'),
+    regex,
     isHostSpecific,
     paramNames,
   };
@@ -221,10 +244,11 @@ export function getRouteSpecificity(pattern: string): number {
  * Pre-compiles a single RouteDefinition into an optimized CompiledRoute.
  */
 export function compileRoute(route: RouteDefinition): CompiledRoute {
-  const { regex, isHostSpecific, paramNames } = compilePattern(route.pattern);
-  const specificity = getRouteSpecificity(route.pattern);
+  const normalized = normalizePattern(route.pattern);
+  const { regex, isHostSpecific, paramNames } = compilePattern(normalized);
+  const specificity = getRouteSpecificity(normalized);
   return {
-    pattern: route.pattern,
+    pattern: normalized,
     regex,
     isHostSpecific,
     paramNames,
@@ -260,7 +284,15 @@ export function matchCompiledRoute(
   }
 
   const matches = Array.from(result);
-  const params: Record<string, string> = { ...result.groups };
+  const params: Record<string, string> = {};
+  if (result.groups) {
+    for (const [key, value] of Object.entries(result.groups)) {
+      if (value !== undefined) {
+        const cleanKey = key.replace(/_\d+$/, '');
+        params[cleanKey] = value;
+      }
+    }
+  }
 
   compiled.paramNames.forEach((name, index) => {
     if (!params[name] && matches[index + 1] !== undefined) {

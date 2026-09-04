@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>短链接配置与加盐哈希管理工具 - ShortLink Admin</title>
+  <title>短链接管理后台 - ShortLink Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -447,18 +447,18 @@
           <i class="mdui-icon material-icons">alt_route</i>
         </div>
         <div class="brand-title">
-          <h1>短链接配置与加盐哈希管理</h1>
-          <p>本地安全管理 · 对称加密防泄露 · 实时 Diff 差异对比</p>
+          <h1>短链接管理后台</h1>
+          <p>本地管理 · 防泄露加密 · 变更对比</p>
         </div>
       </div>
       <div class="header-actions">
-        <button class="btn" onclick="openFileSelector()" title="直接从本地读取 routes.ts">
-          <i class="mdui-icon material-icons">folder_open</i> 读取配置
+        <button class="btn" onclick="openFileSelector()" title="打开并载入本地 routes.ts 配置文件">
+          <i class="mdui-icon material-icons">folder_open</i> 打开配置
         </button>
         <button class="btn" onclick="exportEnvFile()" title="复制供本地与 Worker 读取的 .dev.vars / .env 环境变量文件">
-          <i class="mdui-icon material-icons">vpn_key</i> 导出 .env
+          <i class="mdui-icon material-icons">vpn_key</i> 复制 .env 密钥
         </button>
-        <button class="btn" onclick="exportTypeScript()">
+        <button class="btn" onclick="exportTypeScript()" title="复制生成的完整 TypeScript 配置文件">
           <i class="mdui-icon material-icons">content_copy</i> 复制 routes.ts
         </button>
         <button class="btn btn-primary" id="saveConfigBtn" onclick="saveConfigFile()" title="直接保存修改到文件 (Ctrl+S)">
@@ -471,46 +471,46 @@
       <!-- 1. 全局配置卡片 -->
       <div class="card">
         <div class="card-title">
-          <i class="mdui-icon material-icons">settings</i> 1. 全局站点与加密设置 (Settings)
+          <i class="mdui-icon material-icons">settings</i> 站点全局设置
         </div>
         <div class="form-row">
           <div class="form-group">
             <label>
-              <i class="mdui-icon material-icons" style="font-size:16px;">dns</i> 部署主域名 (Base Domain)
+              <i class="mdui-icon material-icons" style="font-size:16px;">dns</i> 主域名
             </label>
             <input type="text" id="cfgDomain" class="form-control" value="stevezmt.top" placeholder="例如 stevezmt.top" oninput="onSettingsChange()">
           </div>
           <div class="form-group">
             <label>
-              <i class="mdui-icon material-icons" style="font-size:16px;">vpn_key</i> 密码哈希盐值 (留空默认使用主域名)
+              <i class="mdui-icon material-icons" style="font-size:16px;">vpn_key</i> 访问密码防碰撞盐值 (可选)
             </label>
-            <input type="text" id="cfgSalt" class="form-control" placeholder="留空以主域名为 Salt" oninput="onSettingsChange()">
+            <input type="text" id="cfgSalt" class="form-control" placeholder="留空默认使用主域名作为盐值" oninput="onSettingsChange()">
           </div>
         </div>
 
         <div class="form-group">
           <label>
-            <i class="mdui-icon material-icons" style="font-size:16px;">enhanced_encryption</i> 公开部署对称加密密钥 (可选，AES-GCM)
+            <i class="mdui-icon material-icons" style="font-size:16px;">enhanced_encryption</i> 路由加密密钥 (ROUTES_KEY，可选)
           </label>
-          <input type="text" id="cfgEncryptionKey" class="form-control mono" placeholder="留空则明文导出；若填写将加密短链，线上由 ROUTES_KEY 环境变量解密" oninput="onSettingsChange()">
+          <input type="text" id="cfgEncryptionKey" class="form-control mono" placeholder="设置密钥后将加密跳转目标，防止公开仓库被一键转储；运行时由 Worker 环境变量解密" oninput="onSettingsChange()">
         </div>
 
         <div class="form-group">
           <label>
-            <i class="mdui-icon material-icons" style="font-size:16px;">error_outline</i> 404 兜底目标地址 (NotFound URL)
+            <i class="mdui-icon material-icons" style="font-size:16px;">error_outline</i> 404 页面网址
           </label>
           <input type="text" id="cfg404" class="form-control" value="https://stevezmt.top/404?from=${FULL_URL}" oninput="onSettingsChange()">
         </div>
         <div class="form-row">
           <div class="form-group">
             <label>
-              <i class="mdui-icon material-icons" style="font-size:16px;">tag</i> 全局默认 UTM Source
+              <i class="mdui-icon material-icons" style="font-size:16px;">tag</i> 默认统计参数: UTM Source
             </label>
             <input type="text" id="cfgUtmSource" class="form-control" value="shortlink" oninput="onSettingsChange()">
           </div>
           <div class="form-group">
             <label>
-              <i class="mdui-icon material-icons" style="font-size:16px;">campaign</i> 全局默认 UTM Medium
+              <i class="mdui-icon material-icons" style="font-size:16px;">campaign</i> 默认统计参数: UTM Medium
             </label>
             <input type="text" id="cfgUtmMedium" class="form-control" value="redirect" oninput="onSettingsChange()">
           </div>
@@ -520,38 +520,38 @@
       <!-- 2. 添加/编辑短链接卡片 -->
       <div class="card">
         <div class="card-title">
-          <i class="mdui-icon material-icons">add_link</i> 2. 添加 / 编辑短链接
+          <i class="mdui-icon material-icons">add_link</i> 添加 / 编辑跳转规则
         </div>
         <div class="form-row">
           <div class="form-group">
             <label>
-              <i class="mdui-icon material-icons" style="font-size:16px;">link</i> 短链路径 (支持 /、/path、blog:/:slug 或 regex:^...)
+              <i class="mdui-icon material-icons" style="font-size:16px;">link</i> 访问路径
             </label>
-            <input type="text" id="linkPath" class="form-control mono" placeholder="/ 或 blog:/:slug 或 blog:/* 或 regex:^...">
+            <input type="text" id="linkPath" class="form-control mono" placeholder="如 /、/docs、blog:/:slug 或 regex:^...">
           </div>
           <div class="form-group">
             <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
               <span style="display: flex; align-items: center; gap: 0.35rem;">
-                <i class="mdui-icon material-icons" style="font-size:16px;">open_in_new</i> 目标网址 (Target URL)
+                <i class="mdui-icon material-icons" style="font-size:16px;">open_in_new</i> 跳转目标网址
               </span>
               <span style="font-size: 0.8rem; color: #38bdf8; display: flex; align-items: center; gap: 0.3rem;">
                 <input type="checkbox" id="linkEncryptTarget" style="cursor: pointer;">
-                <label for="linkEncryptTarget" style="cursor: pointer; margin: 0; color: #38bdf8;">加密此目标 (由 .env 密钥解密)</label>
+                <label for="linkEncryptTarget" style="cursor: pointer; margin: 0; color: #38bdf8;">加密此目标 (防公开泄露)</label>
               </span>
             </label>
-            <input type="text" id="linkTarget" class="form-control" placeholder="https://... 或 https://.../post/:slug 或 $1">
+            <input type="text" id="linkTarget" class="form-control" placeholder="如 https://example.com 或 https://example.com/post/:slug">
           </div>
         </div>
 
         <div class="form-group">
           <label>
-            <i class="mdui-icon material-icons" style="font-size:16px;">lock</i> 访问密码保护 (直接指定加盐哈希，无需保存明文密码)
+            <i class="mdui-icon material-icons" style="font-size:16px;">lock</i> 访客访问密码 (由 Worker 校验，仅带密码的跳转不被 CDN 缓存)
           </label>
-          <input type="text" id="linkPassword" class="form-control" placeholder="输入访客需提交的密码（自动生成加盐哈希存入配置）或留空" oninput="updateHashPreview()">
+          <input type="text" id="linkPassword" class="form-control" placeholder="输入访客需输入的访问密码，保存时自动计算加盐哈希，路由匹配后由 Worker 校验" oninput="updateHashPreview()">
           <div id="hashPreviewBox" class="hash-preview" style="display: none;">
             <div class="label">
-              <span>SHA-256 加盐哈希 (仅此哈希存入 routes.ts，服务端无需存储密码)</span>
-              <span id="currentSaltLabel">Salt: stevezmt.top</span>
+              <span>配置中保存的加盐哈希（服务端不存明文密码）</span>
+              <span id="currentSaltLabel">盐值: stevezmt.top</span>
             </div>
             <div class="hash-val mono" id="hashValPreview">sha256:...</div>
           </div>
@@ -560,34 +560,34 @@
         <div class="form-row">
           <div class="form-group">
             <label>
-              <i class="mdui-icon material-icons" style="font-size:16px;">security</i> 最低 TLS 要求
+              <i class="mdui-icon material-icons" style="font-size:16px;">security</i> 安全协议要求 (TLS)
             </label>
             <select id="linkMinTls" class="form-control">
-              <option value="">不限制</option>
-              <option value="1.2">要求 TLS 1.2+</option>
-              <option value="1.3">要求 TLS 1.3+</option>
+              <option value="">默认 (不限制)</option>
+              <option value="1.2">要求 TLS 1.2 或更高</option>
+              <option value="1.3">要求 TLS 1.3 (最高安全)</option>
             </select>
           </div>
           <div class="form-group">
             <label>
-              <i class="mdui-icon material-icons" style="font-size:16px;">block</i> 爬虫拦截
+              <i class="mdui-icon material-icons" style="font-size:16px;">block</i> 屏蔽恶意爬虫
             </label>
             <select id="linkBlockBots" class="form-control">
-              <option value="false">放行</option>
-              <option value="true">拦截常见恶意 Bot (403)</option>
+              <option value="false">放行 (不过滤)</option>
+              <option value="true">拦截常见自动化爬虫 (返回 403)</option>
             </select>
           </div>
         </div>
 
         <div class="form-group">
           <label>
-            <i class="mdui-icon material-icons" style="font-size:16px;">phone_iphone</i> 移动端专属落地页 (可选)
+            <i class="mdui-icon material-icons" style="font-size:16px;">phone_iphone</i> 手机端独立目标 (可选)
           </label>
-          <input type="text" id="linkMobile" class="form-control" placeholder="留空则移动端前往相同目标">
+          <input type="text" id="linkMobile" class="form-control" placeholder="留空则手机与电脑访问相同目标">
         </div>
 
         <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="saveLink()">
-          <i class="mdui-icon material-icons">check</i> 保存短链接到路由表
+          <i class="mdui-icon material-icons">check</i> 保存跳转规则
         </button>
       </div>
     </div>
@@ -597,14 +597,14 @@
       <div class="card-title" style="justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
           <i class="mdui-icon material-icons">table_chart</i>
-          <span>3. 当前路由表 (<span id="routeCount">0</span> 条)</span>
+          <span>跳转规则列表 (<span id="routeCount">0</span> 条)</span>
         </div>
         <div style="display: flex; gap: 0.5rem;">
-          <button class="btn btn-sm" onclick="revertToBaseline()" title="放弃编辑，还原为最初读取的配置">
-            <i class="mdui-icon material-icons">undo</i> 还原原配置
+          <button class="btn btn-sm" onclick="revertToBaseline()" title="放弃所有未保存修改，恢复为最初打开时的配置">
+            <i class="mdui-icon material-icons">undo</i> 放弃修改
           </button>
-          <button class="btn btn-sm" onclick="loadSampleRoutes()" title="仅保留自身根路径 / 被访问时的重定向">
-            <i class="mdui-icon material-icons">restart_alt</i> 重置为默认模板 (仅根重定向)
+          <button class="btn btn-sm" onclick="loadSampleRoutes()" title="仅保留根路径 / 跳转到主站">
+            <i class="mdui-icon material-icons">restart_alt</i> 重置为默认模板
           </button>
         </div>
       </div>
@@ -612,9 +612,9 @@
         <table>
           <thead>
             <tr>
-              <th>短链路径</th>
-              <th>目标跳转地址</th>
-              <th>特性与安全策略</th>
+              <th>访问路径</th>
+              <th>跳转目标</th>
+              <th>生效配置与安全策略</th>
               <th style="text-align: right;">操作</th>
             </tr>
           </thead>
@@ -669,12 +669,8 @@
     // 初始基准代码（仅保留自身被访问时重定向到主页）
     let baselineSourceCode = `/**
  * Short Link Configuration Table.
- *
- * Designed with 《A Philosophy of Software Design》 principles:
- * - Centralized Settings: Domain, 404, and UTM defaults are defined in ONE place.
- * - Minimal Default Template: Only routes root '/' to destination when accessed.
- * - Optional Symmetric Encryption: Supports \`encrypted: 'aes-gcm:v1:...'\` with ROUTES_KEY env var.
- */
+ * Generated via admin.html
+  */
 
 import { ShortLinkConfig } from '../types';
 
@@ -942,20 +938,41 @@ export const config: ShortLinkConfig = {
       }
     }
 
-    function editLink(path) {
+    async function editLink(path) {
       const val = state.links[path];
       document.getElementById('linkPath').value = path;
+      let rawTarget = typeof val === 'string' ? val : (val ? val.target || '' : '');
+      const isEncrypted = typeof rawTarget === 'string' && rawTarget.startsWith('aes-gcm:');
+
+      if (isEncrypted) {
+        let key = state.settings.encryptionKey || document.getElementById('cfgEncryptionKey').value.trim();
+        if (!key) {
+          key = prompt('该跳转目标已密文掩盖保护。\n请输入 ROUTES_KEY 密钥进行解密以便编辑：');
+          if (key) {
+            key = key.trim();
+            state.settings.encryptionKey = key;
+            document.getElementById('cfgEncryptionKey').value = key;
+          }
+        }
+        if (key) {
+          try {
+            rawTarget = await decryptData(rawTarget, key);
+            showToast('已解密目标网址，便于编辑');
+          } catch (_) {
+            alert('解密失败：ROUTES_KEY 不正确，保持密文显示。');
+          }
+        }
+      }
+
+      document.getElementById('linkTarget').value = rawTarget;
+      document.getElementById('linkEncryptTarget').checked = isEncrypted;
+
       if (typeof val === 'string') {
-        document.getElementById('linkTarget').value = val;
-        document.getElementById('linkEncryptTarget').checked = val.startsWith('aes-gcm:');
         document.getElementById('linkPassword').value = '';
         document.getElementById('linkMinTls').value = '';
         document.getElementById('linkBlockBots').value = 'false';
         document.getElementById('linkMobile').value = '';
       } else {
-        const targetStr = val.target || '';
-        document.getElementById('linkTarget').value = targetStr;
-        document.getElementById('linkEncryptTarget').checked = typeof targetStr === 'string' && targetStr.startsWith('aes-gcm:');
         document.getElementById('linkPassword').value = val.password || '';
         document.getElementById('linkMinTls').value = val.minTls || '';
         document.getElementById('linkBlockBots').value = val.blockBots ? 'true' : 'false';
@@ -979,43 +996,47 @@ export const config: ShortLinkConfig = {
 
         let badges = '';
         if (path === '/') {
-          badges += '<span class="badge badge-success"><i class="mdui-icon material-icons" style="font-size:12px;">home</i> 根路径自身重定向</span>';
+          badges += '<span class="badge badge-success"><i class="mdui-icon material-icons" style="font-size:12px;">home</i> 根路径直达</span>';
         } else if (path.startsWith('regex:')) {
           badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">code</i> 正则匹配</span>';
         } else if (path.includes('/:')) {
           badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">tune</i> 动态参数 (:slug)</span>';
         } else if (path.includes(':')) {
-          badges += '<span class="badge badge-accent"><i class="mdui-icon material-icons" style="font-size:12px;">language</i> 子域名</span>';
+          badges += '<span class="badge badge-accent"><i class="mdui-icon material-icons" style="font-size:12px;">language</i> 自定义子域名</span>';
         }
 
         if (isTargetEncrypted) {
-          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">enhanced_encryption</i> 目标已加密</span>';
+          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">enhanced_encryption</i> 密文存储 (防转储)</span>';
         }
 
         if (!isString) {
           if (val.password) {
-            badges += '<span class="badge badge-warning"><i class="mdui-icon material-icons" style="font-size:12px;">lock</i> 加盐哈希</span>';
+            badges += '<span class="badge badge-warning"><i class="mdui-icon material-icons" style="font-size:12px;">lock</i> 密码保护 (不缓存)</span>';
           }
           if (val.minTls) {
             badges += `<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">security</i> TLS ${val.minTls}+</span>`;
           }
           if (val.blockBots) {
-            badges += '<span class="badge badge-danger"><i class="mdui-icon material-icons" style="font-size:12px;">block</i> 防爬虫</span>';
+            badges += '<span class="badge badge-danger"><i class="mdui-icon material-icons" style="font-size:12px;">block</i> 拦截爬虫</span>';
           }
           if (val.mobile) {
-            badges += '<span class="badge badge-success"><i class="mdui-icon material-icons" style="font-size:12px;">phone_iphone</i> 移动分流</span>';
+            badges += '<span class="badge badge-success"><i class="mdui-icon material-icons" style="font-size:12px;">phone_iphone</i> 手机独立跳转</span>';
           }
         }
 
+        const safePath = escapeHtml(path);
+        const safeTarget = escapeHtml(typeof target === 'string' ? target : JSON.stringify(target));
+        const jsEscapedPath = path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
         tr.innerHTML = `
-          <td><strong class="mono" style="color: #38bdf8;">${path}</strong></td>
-          <td><a href="${target}" target="_blank" style="color: #94a3b8; text-decoration: none;">${target}</a></td>
+          <td><strong class="mono" style="color: #38bdf8;">${safePath}</strong></td>
+          <td><a href="${safeTarget}" target="_blank" rel="noopener noreferrer" style="color: #94a3b8; text-decoration: none;">${safeTarget}</a></td>
           <td>${badges || '<span style="color: #64748b; font-size: 0.8rem;">基础跳转</span>'}</td>
           <td style="text-align: right;">
-            <button class="btn btn-sm" onclick="editLink('${path}')">
+            <button class="btn btn-sm" onclick="editLink('${jsEscapedPath}')">
               <i class="mdui-icon material-icons" style="font-size:15px;">edit</i>
             </button>
-            <button class="btn btn-danger btn-sm" onclick="deleteLink('${path}')">
+            <button class="btn btn-danger btn-sm" onclick="deleteLink('${jsEscapedPath}')">
               <i class="mdui-icon material-icons" style="font-size:15px;">delete</i>
             </button>
           </td>
@@ -1075,7 +1096,8 @@ export const config: ShortLinkConfig = {
 
         return `/**
  * Short Link Configuration Table.
- * Generated via admin.html (Encrypted with AES-GCM + HKDF)
+ * Generated via admin.html
+ * ENC ENABLED
  *
  * NOTE: Symmetrically encrypted for public repo security!
  * Set environment variable ROUTES_KEY in Cloudflare Worker dashboard.
@@ -1085,14 +1107,14 @@ import { ShortLinkConfig } from '../types';
 
 export const config: ShortLinkConfig = {
   settings: {
-    domain: '${state.settings.domain}',
-    ${state.settings.salt ? `salt: '${state.settings.salt}',\n    ` : ''}notFoundUrl: '${state.settings.notFoundUrl}',
-    notFoundMode: '${state.settings.notFoundMode}',${utmSnippet}
+    domain: ${serializeTsLiteral(state.settings.domain || '')},
+    ${state.settings.salt ? `salt: ${serializeTsLiteral(state.settings.salt)},\n    ` : ''}notFoundUrl: ${serializeTsLiteral(state.settings.notFoundUrl || '')},
+    notFoundMode: ${serializeTsLiteral(state.settings.notFoundMode || 'redirect')},${utmSnippet}
   },
 
   // 自身访问时的公开重定向
   links: {
-    '/': '${rootTarget}',
+    '/': ${serializeTsLiteral(rootTarget)},
   },
 
   // 对称加密短链数据（AES-GCM-256 + HKDF，线上由 ROUTES_KEY 环境变量自动解密）
@@ -1107,15 +1129,15 @@ export const config: ShortLinkConfig = {
       return `/**
  * Short Link Configuration Table.
  * Generated via admin.html
- */
+  */
 
 import { ShortLinkConfig } from '../types';
 
 export const config: ShortLinkConfig = {
   settings: {
-    domain: '${state.settings.domain}',
-    ${state.settings.salt ? `salt: '${state.settings.salt}',\n    ` : ''}notFoundUrl: '${state.settings.notFoundUrl}',
-    notFoundMode: '${state.settings.notFoundMode}',${utmSnippet}
+    domain: ${serializeTsLiteral(state.settings.domain || '')},
+    ${state.settings.salt ? `salt: ${serializeTsLiteral(state.settings.salt)},\n    ` : ''}notFoundUrl: ${serializeTsLiteral(state.settings.notFoundUrl || '')},
+    notFoundMode: ${serializeTsLiteral(state.settings.notFoundMode || 'redirect')},${utmSnippet}
   },
 
   links: ${linksTs},
@@ -1281,17 +1303,99 @@ export const config: ShortLinkConfig = {
           throw new Error('未能从文件中识别出有效的配置对象 { ... }');
         }
 
+        function stripComments(code) {
+          let inString = null;
+          let inSingleLineComment = false;
+          let inMultiLineComment = false;
+          let result = '';
+
+          for (let i = 0; i < code.length; i++) {
+            const ch = code[i];
+            const next = code[i + 1];
+
+            if (inSingleLineComment) {
+              if (ch === '\n') {
+                inSingleLineComment = false;
+                result += ch;
+              }
+              continue;
+            }
+
+            if (inMultiLineComment) {
+              if (ch === '*' && next === '/') {
+                inMultiLineComment = false;
+                i++;
+              }
+              continue;
+            }
+
+            if (inString) {
+              result += ch;
+              if (ch === '\\') {
+                result += next;
+                i++;
+              } else if (ch === inString) {
+                inString = null;
+              }
+              continue;
+            }
+
+            if (ch === '/' && next === '/') {
+              inSingleLineComment = true;
+              i++;
+              continue;
+            }
+            if (ch === '/' && next === '*') {
+              inMultiLineComment = true;
+              i++;
+              continue;
+            }
+
+            if (ch === "'" || ch === '"' || ch === '`') {
+              inString = ch;
+              result += ch;
+              continue;
+            }
+
+            result += ch;
+          }
+
+          return result;
+        }
+
         let parsed;
         try {
-          const fn = new Function('return (' + objStr + ')');
-          parsed = fn();
-        } catch (fnErr) {
-          // 清理注释后再试一次
-          const cleanObjStr = objStr
-            .replace(/\/\*[\s\S]*?\*\//g, '')
-            .replace(/\/\/[^\n]*/g, '');
-          const fn = new Function('return (' + cleanObjStr + ')');
-          parsed = fn();
+          // 安全的纯文本 JSON 转换解析，绝不使用 new Function 执行外部不可信脚本
+          // 1. 基于状态机剥离注释，保护 URL (https://) 中的双斜杠不被破坏
+          let clean = stripComments(objStr);
+
+          // 2. 规范化单引号字符串为 JSON 双引号字符串，并安全转义其中的控制字符
+          clean = clean.replace(/'((?:\\.|[^'])*)'/g, (_, content) => {
+            return '"' + content
+              .replace(/"/g, '\\"')
+              .replace(/\\'/g, "'")
+              .replace(/\r/g, '\\r')
+              .replace(/\n/g, '\\n') + '"';
+          });
+
+          // 3. 规范化模板反引号字符串为 JSON 双引号字符串
+          clean = clean.replace(/`((?:\\.|[^`])*)`/g, (_, content) => {
+            return '"' + content
+              .replace(/"/g, '\\"')
+              .replace(/\\`/g, '`')
+              .replace(/\r/g, '\\r')
+              .replace(/\n/g, '\\n') + '"';
+          });
+
+          // 4. 规范化对象字面量键名: e.g. { domain: -> { "domain":
+          clean = clean.replace(/([{,]\s*)([a-zA-Z0-9_$]+)\s*:/g, '$1"$2":');
+
+          // 5. 移除 JSON 不支持的对象/数组末尾逗号
+          clean = clean.replace(/,\s*([}\]])/g, '$1');
+
+          parsed = JSON.parse(clean);
+        } catch (jsonErr) {
+          throw new Error('解析配置文件失败: 请确保配置文件为标准 JavaScript/TypeScript 对象字面量。错误: ' + jsonErr.message);
         }
 
         if (!parsed || typeof parsed !== 'object') {
@@ -1556,8 +1660,12 @@ export const config: ShortLinkConfig = {
     });
 
     function exportEnvFile() {
-      const key = state.settings.encryptionKey || 'stevezmt_secure_pass_2026';
-      const envText = `# Cloudflare Worker 统一密码配置 (.dev.vars / .env)
+      const key = state.settings.encryptionKey;
+      if (!key) {
+        showToast('未配置对称密钥，请先在上方设置或加密链接！');
+        return;
+      }
+      const envText = `# Cloudflare Worker 对称解密密钥 (.dev.vars / .env)
 # 放在短链接项目根目录下供本地开发 (wrangler dev) 与 Worker 读取
 # 线上部署请执行: npx wrangler secret put ROUTES_KEY
 

@@ -101,6 +101,7 @@ export function createTieredRedirectResponse(
   headers.set('Content-Type', 'text/html; charset=utf-8');
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('X-Robots-Tag', 'noindex, nofollow');
+  headers.set('Referrer-Policy', 'no-referrer');
   // Tiered cache control: sensitive/authenticated routes are not cached, public static routes allow edge caching
   if (!headers.has('Cache-Control')) {
     if (isSensitive) {

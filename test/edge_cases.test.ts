@@ -106,21 +106,20 @@ describe('Edge Cases & Design Flaw Reproduction Tests', () => {
   });
 
   describe('6. HTTP Redirection Specification for Form POST (RFC 7231)', () => {
-    it('uses 303 See Other for redirecting browser POST password unlocking', async () => {
+    it('uses 303 See Other for redirecting browser POST requests to target URL', async () => {
       const handler = createShortLinkHandler({
         links: {
-          '/private': {
-            target: 'https://example.com/secret',
-            password: 'pass',
+          '/submit': {
+            target: 'https://example.com/dest',
           },
         },
       });
 
       const form = new FormData();
-      form.set('password', 'pass');
+      form.set('field', 'value');
 
       const response = await handler(
-        new Request('https://stevezmt.top/private', {
+        new Request('https://stevezmt.top/submit', {
           method: 'POST',
           body: form,
         })
@@ -128,7 +127,7 @@ describe('Edge Cases & Design Flaw Reproduction Tests', () => {
 
       // RFC 7231 Section 6.4.4: 303 See Other guarantees client switches to GET
       expect(response.status).toBe(303);
-      expect(response.headers.get('Location')).toBe('https://example.com/secret');
+      expect(response.headers.get('Location')).toBe('https://example.com/dest');
     });
   });
 });

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { interpolateTargetUrl, buildDestinationUrl } from '../src/utils/url';
 import { isSafeRedirectUrl, createTieredRedirectResponse } from '../src/utils/response';
-import { safeCompare } from '../src/auth/basicAuth';
+import { safeCompare, hashPasswordWithSalt } from '../src/auth/basicAuth';
 import { encryptData, decryptData } from '../src/utils/crypto';
 import { createShortLinkHandler } from '../src/index';
 
@@ -85,7 +85,7 @@ describe('Security & Architectural Fixes Verification', () => {
       expect(authRes.headers.get('Cache-Control')).toContain('no-store');
     });
 
-    it('sets strict no-cache/no-store on encrypted destination routes', async () => {
+    it('allows public edge caching on passwordless encrypted routes (ROUTE_KEY protects routes from dumping)', async () => {
       const masterKey = 'master-key-xyz';
       const encryptedTarget = await encryptData('https://example.com/encrypted-target', masterKey);
 
@@ -100,7 +100,80 @@ describe('Security & Architectural Fixes Verification', () => {
       });
 
       expect(response.status).toBe(302);
-      expect(response.headers.get('Cache-Control')).toContain('no-store');
+      expect(response.headers.get('Cache-Control')).toContain('public');
+      expect(response.headers.get('Cache-Control')).not.toContain('no-store');
+    });
+
+    it('verifies strict alignment: ROUTES_KEY masks destination targets while visitor password is authenticated independently by Worker', async () => {
+      // 1. ROUTES_KEY is used to mask the destination target (AES-GCM-256 with HKDF)
+      const routesKey = 'my-super-secret-routes-key';
+      const hiddenDestination = 'https://stevezmt.top/internal-admin-dashboard?ref=secret';
+      const encryptedTarget = await encryptData(hiddenDestination, routesKey);
+
+      // Verify the target is indeed masked as aes-gcm cipher
+      expect(encryptedTarget).toMatch(/^aes-gcm:v1:/);
+      expect(encryptedTarget).not.toContain('internal-admin-dashboard');
+
+      // 2. Visitor access password is calculated as a salted hash and verified by the Worker
+      const visitorPassword = 'Pass123_Visit!@#';
+      const salt = 'stevezmt.top';
+      const saltedHash = await hashPasswordWithSalt(visitorPassword, salt);
+
+      // Route definition mirrors exactly what admin.html outputs to routes.ts
+      const handler = createShortLinkHandler({
+        settings: {
+          domain: 'stevezmt.top',
+          salt,
+        },
+        links: {
+          '/admin-portal': {
+            target: encryptedTarget,
+            password: `sha256:${saltedHash}`,
+          },
+        },
+      });
+
+      // Request A: Visiting without password returns 401 Unauthorized (Worker auth check)
+      const unauthResponse = await handler(new Request('https://stevezmt.top/admin-portal'), {
+        ROUTES_KEY: routesKey,
+      });
+      expect(unauthResponse.status).toBe(401);
+      expect(unauthResponse.headers.get('WWW-Authenticate')).toContain('Basic realm=');
+
+      // Request B: Visiting with wrong password returns 401
+      const wrongAuthHeader = 'Basic ' + btoa('user:wrong-password');
+      const badPassResponse = await handler(
+        new Request('https://stevezmt.top/admin-portal', {
+          headers: { Authorization: wrongAuthHeader },
+        }),
+        { ROUTES_KEY: routesKey }
+      );
+      expect(badPassResponse.status).toBe(401);
+
+      // Request C: Visiting with correct password, but missing ROUTES_KEY returns 500 error
+      // (Proving password auth succeeded, but destination target decryption requires ROUTES_KEY)
+      const validAuthHeader = 'Basic ' + btoa(`visitor:${visitorPassword}`);
+      const missingKeyResponse = await handler(
+        new Request('https://stevezmt.top/admin-portal', {
+          headers: { Authorization: validAuthHeader },
+        }),
+        {} // No ROUTES_KEY in environment
+      );
+      expect(missingKeyResponse.status).toBe(500);
+      expect(await missingKeyResponse.text()).toContain('ROUTES_KEY is missing');
+
+      // Request D: Visiting with correct password AND correct ROUTES_KEY succeeds:
+      // decrypts destination and redirects, with strict no-cache because it is password protected
+      const successResponse = await handler(
+        new Request('https://stevezmt.top/admin-portal', {
+          headers: { Authorization: validAuthHeader },
+        }),
+        { ROUTES_KEY: routesKey }
+      );
+      expect(successResponse.status).toBe(302);
+      expect(successResponse.headers.get('Location')).toBe(hiddenDestination);
+      // Because this route has password auth, it must NOT be cached on edge
+      expect(successResponse.headers.get('Cache-Control')).toContain('no-store');
     });
   });
 
@@ -167,13 +240,75 @@ describe('Security & Architectural Fixes Verification', () => {
         },
       });
 
-      // Even if ROUTES_KEY / AUTH_PASSWORD exists in env, visitor should NOT be challenged with 401
+      // Even if ROUTES_KEY exists in env, visitor should NOT be challenged with 401
       const response = await handler(new Request('https://stevezmt.top/open-link'), {
         ROUTES_KEY: 'master-super-password',
       });
 
       expect(response.status).toBe(302);
       expect(response.headers.get('Location')).toContain('https://example.com/open');
+    });
+  });
+
+  describe('Referrer-Policy & Credential Sanitization', () => {
+    it('injects Referrer-Policy: no-referrer on all redirect responses', async () => {
+      const handler = createShortLinkHandler({
+        links: {
+          '/test-ref': 'https://example.com/dest',
+        },
+      });
+
+      const response = await handler(new Request('https://stevezmt.top/test-ref'));
+      expect(response.status).toBe(302);
+      expect(response.headers.get('Referrer-Policy')).toBe('no-referrer');
+    });
+
+    it('strips ?pwd= and ?password= parameters when resolving 404 URL templates', async () => {
+      const handler = createShortLinkHandler({
+        settings: {
+          notFoundUrl: 'https://example.com/404?from=${FULL_URL}',
+        },
+        links: {},
+      });
+
+      const response = await handler(new Request('https://stevezmt.top/missing?pwd=secret-pass-123&user=john'));
+      expect(response.status).toBe(404);
+      const location = response.headers.get('Location') || '';
+      expect(decodeURIComponent(location)).toContain('user=john');
+      expect(location).not.toContain('secret-pass-123');
+      expect(location).not.toContain('pwd=');
+    });
+
+    it('rejects protocol-relative target URLs in buildDestinationUrl', () => {
+      expect(() => {
+        buildDestinationUrl('//attacker.com/steal', new URL('https://stevezmt.top'));
+      }).toThrow();
+    });
+
+    it('blocks bots case-insensitively', async () => {
+      const handler = createShortLinkHandler({
+        links: {
+          '/bot-check': {
+            target: 'https://example.com/allowed',
+            blockBots: true,
+          },
+        },
+      });
+
+      // Lowercase user agent should still be blocked
+      const responseLower = await handler(
+        new Request('https://stevezmt.top/bot-check', {
+          headers: { 'User-Agent': 'go-http-client/1.1' },
+        })
+      );
+      expect(responseLower.status).toBe(403);
+
+      const responseBytespider = await handler(
+        new Request('https://stevezmt.top/bot-check', {
+          headers: { 'User-Agent': 'bytespider' },
+        })
+      );
+      expect(responseBytespider.status).toBe(403);
     });
   });
 });

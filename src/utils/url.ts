@@ -90,6 +90,11 @@ export function buildDestinationUrl(
   // Interpolate route parameters (:slug, $1) into target template
   let interpolatedTarget = interpolateTargetUrl(targetUrl, params, matches).trim();
 
+  // Reject protocol-relative URLs (//attacker.com) to prevent open redirect bypasses
+  if (interpolatedTarget.startsWith('//')) {
+    throw new Error('Invalid URL: Protocol-relative URLs are prohibited.');
+  }
+
   // If target is a bare domain (e.g. "baidu.com" or "example.com/page"), auto-prepend https://
   // Do NOT prepend https:// if it already has a protocol scheme (e.g. http:, https:, tg:, mailto:) or starts with '/'
   if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(interpolatedTarget) && !interpolatedTarget.startsWith('/')) {
@@ -134,15 +139,23 @@ export function buildDestinationUrl(
 
 /**
  * Replaces placeholders in URLs such as 404 targets.
+ * Strips sensitive credentials (pwd, password) to prevent credential leakage.
  * Supported tokens:
  * - ${FULL_URL} -> URL-encoded full URL
  * - ${RAW_FULL_URL} -> raw full URL
  * - ${PATH} -> incoming pathname
  */
 export function resolveUrlTemplate(template: string, incomingUrl: URL): string {
-  const fullUrl = incomingUrl.toString();
+  // Strip sensitive credentials from incomingUrl before expanding into template
+  const sanitizedUrl = new URL(incomingUrl.toString());
+  sanitizedUrl.searchParams.delete('pwd');
+  sanitizedUrl.searchParams.delete('password');
+  sanitizedUrl.username = '';
+  sanitizedUrl.password = '';
+
+  const fullUrl = sanitizedUrl.toString();
   const encodedFullUrl = encodeURIComponent(fullUrl);
-  const path = incomingUrl.pathname;
+  const path = sanitizedUrl.pathname;
 
   return template
     .replace(/\$\{FULL_URL\}/g, encodedFullUrl)
