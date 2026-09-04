@@ -448,7 +448,7 @@
         </div>
         <div class="brand-title">
           <h1>短链接管理后台</h1>
-          <p>本地管理 · 防泄露加密 · 变更对比</p>
+          <p>适用于本地管理模式</p>
         </div>
       </div>
       <div class="header-actions">
@@ -493,6 +493,13 @@
             <i class="mdui-icon material-icons" style="font-size:16px;">enhanced_encryption</i> 路由加密密钥 (ROUTES_KEY，可选)
           </label>
           <input type="text" id="cfgEncryptionKey" class="form-control mono" placeholder="设置密钥后将加密跳转目标，防止公开仓库被一键转储；运行时由 Worker 环境变量解密" oninput="onSettingsChange()">
+          <div style="margin-top: 0.6rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; padding: 0.55rem 0.8rem; background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.16); border-radius: 6px;">
+            <label style="display: inline-flex; align-items: center; gap: 0.45rem; cursor: pointer; color: #38bdf8; font-weight: 500; font-size: 0.88rem; margin: 0;">
+              <input type="checkbox" id="cfgEncryptAllRoutes" style="cursor: pointer; width: 16px; height: 16px;" onchange="onSettingsChange()">
+              <span>加密路由</span>
+            </label>
+            <span style="font-size: 0.78rem; color: var(--text-muted);">除根路径直达外全部统一加密</span>
+          </div>
         </div>
 
         <div class="form-group">
@@ -534,9 +541,9 @@
               <span style="display: flex; align-items: center; gap: 0.35rem;">
                 <i class="mdui-icon material-icons" style="font-size:16px;">open_in_new</i> 跳转目标网址
               </span>
-              <span style="font-size: 0.8rem; color: #38bdf8; display: flex; align-items: center; gap: 0.3rem;">
+              <span id="linkEncryptTargetContainer" style="font-size: 0.8rem; color: #38bdf8; display: flex; align-items: center; gap: 0.3rem; transition: opacity 0.2s;">
                 <input type="checkbox" id="linkEncryptTarget" style="cursor: pointer;">
-                <label for="linkEncryptTarget" style="cursor: pointer; margin: 0; color: #38bdf8;">加密此目标 (防公开泄露)</label>
+                <label id="linkEncryptTargetLabel" for="linkEncryptTarget" style="cursor: pointer; margin: 0; color: #38bdf8;">加密此目标 (防公开泄露)</label>
               </span>
             </label>
             <input type="text" id="linkTarget" class="form-control" placeholder="如 https://example.com 或 https://example.com/post/:slug">
@@ -697,6 +704,7 @@ export const config: ShortLinkConfig = {
         domain: 'stevezmt.top',
         salt: '',
         encryptionKey: '',
+        encryptAllRoutes: false,
         notFoundUrl: 'https://stevezmt.top/404?from=${FULL_URL}',
         notFoundMode: 'redirect',
         defaultUtm: { utm_source: 'shortlink', utm_medium: 'redirect' }
@@ -852,13 +860,57 @@ export const config: ShortLinkConfig = {
       document.getElementById('hashValPreview').textContent = 'sha256:' + hex;
     }
 
+    function syncEncryptionControls() {
+      const encryptAll = document.getElementById('cfgEncryptAllRoutes') ? document.getElementById('cfgEncryptAllRoutes').checked : false;
+      const targetCheckbox = document.getElementById('linkEncryptTarget');
+      const targetLabel = document.getElementById('linkEncryptTargetLabel');
+      const targetContainer = document.getElementById('linkEncryptTargetContainer');
+
+      if (targetCheckbox) {
+        if (encryptAll) {
+          targetCheckbox.checked = false;
+          targetCheckbox.disabled = true;
+          targetCheckbox.style.cursor = 'not-allowed';
+          if (targetLabel) {
+            targetLabel.style.color = 'var(--text-muted)';
+            targetLabel.style.cursor = 'not-allowed';
+            targetLabel.title = '已启用全局“加密路由”，除根路径外全部统一加密，无需且禁止重复加密单个目标';
+          }
+          if (targetContainer) {
+            targetContainer.style.opacity = '0.6';
+            targetContainer.title = '已启用全局“加密路由”，除根路径外全部统一加密，无需且禁止重复加密单个目标';
+          }
+        } else {
+          targetCheckbox.disabled = false;
+          targetCheckbox.style.cursor = 'pointer';
+          if (targetLabel) {
+            targetLabel.style.color = '#38bdf8';
+            targetLabel.style.cursor = 'pointer';
+            targetLabel.title = '';
+          }
+          if (targetContainer) {
+            targetContainer.style.opacity = '1';
+            targetContainer.title = '';
+          }
+        }
+      }
+    }
+
     function onSettingsChange() {
       state.settings.domain = document.getElementById('cfgDomain').value.trim();
       state.settings.salt = document.getElementById('cfgSalt').value.trim();
       state.settings.encryptionKey = document.getElementById('cfgEncryptionKey').value.trim();
+      state.settings.encryptAllRoutes = document.getElementById('cfgEncryptAllRoutes') ? document.getElementById('cfgEncryptAllRoutes').checked : false;
       state.settings.notFoundUrl = document.getElementById('cfg404').value.trim();
       state.settings.defaultUtm.utm_source = document.getElementById('cfgUtmSource').value.trim();
       state.settings.defaultUtm.utm_medium = document.getElementById('cfgUtmMedium').value.trim();
+
+      syncEncryptionControls();
+
+      if (state.settings.encryptAllRoutes && !state.settings.encryptionKey) {
+        showToast('已开启“加密路由”，请记得在上方配置 ROUTES_KEY 密钥');
+      }
+
       updateHashPreview();
       renderAll();
     }
@@ -926,6 +978,7 @@ export const config: ShortLinkConfig = {
       document.getElementById('linkMobile').value = '';
       document.getElementById('hashPreviewBox').style.display = 'none';
 
+      syncEncryptionControls();
       renderAll();
       showToast('短链已保存');
     }
@@ -966,6 +1019,7 @@ export const config: ShortLinkConfig = {
 
       document.getElementById('linkTarget').value = rawTarget;
       document.getElementById('linkEncryptTarget').checked = isEncrypted;
+      syncEncryptionControls();
 
       if (typeof val === 'string') {
         document.getElementById('linkPassword').value = '';
@@ -1079,6 +1133,7 @@ export const config: ShortLinkConfig = {
 
     async function generateTypeScriptCodeAsync() {
       const encKey = state.settings.encryptionKey;
+      const encryptAll = !!state.settings.encryptAllRoutes;
       const utmSource = (state.settings.defaultUtm?.utm_source || '').trim();
       const utmMedium = (state.settings.defaultUtm?.utm_medium || '').trim();
       let utmSnippet = '';
@@ -1089,8 +1144,8 @@ export const config: ShortLinkConfig = {
           `\n    },`;
       }
 
-      if (encKey) {
-        // 对称加密全部 links（除公开的根路径 / 以外，或者整表加密）
+      if (encryptAll && encKey) {
+        // 对称加密全部 links（除公开的根路径 / 以外，全部整体打包加密）
         const encryptedPayload = await encryptData(state.links, encKey);
         const rootTarget = typeof state.links['/'] === 'string' ? state.links['/'] : (state.links['/']?.target || 'https://' + state.settings.domain);
 
@@ -1466,6 +1521,13 @@ export const config: ShortLinkConfig = {
           ...decryptedLinks,
         };
 
+        // 识别是否属于全表“加密路由”配置
+        const hasEncryptedPayload = !!(parsed.encrypted && typeof parsed.encrypted === 'string');
+        state.settings.encryptAllRoutes = hasEncryptedPayload;
+        const encryptAllCheckbox = document.getElementById('cfgEncryptAllRoutes');
+        if (encryptAllCheckbox) encryptAllCheckbox.checked = hasEncryptedPayload;
+        syncEncryptionControls();
+
         // 更新 UI 控件
         document.getElementById('cfgDomain').value = state.settings.domain;
         document.getElementById('cfgSalt').value = state.settings.salt || '';
@@ -1568,7 +1630,21 @@ export const config: ShortLinkConfig = {
       }
     }
 
+    async function checkEncryptionKeyPromptAsync() {
+      if (state.settings.encryptAllRoutes && !state.settings.encryptionKey) {
+        const key = prompt('当前已开启“加密路由”，请输入用于加密全表的统一密钥 (ROUTES_KEY)：');
+        if (key && key.trim()) {
+          state.settings.encryptionKey = key.trim();
+          document.getElementById('cfgEncryptionKey').value = key.trim();
+          renderAll();
+        } else {
+          showToast('未输入密钥，将按未加密的明文表生成配置');
+        }
+      }
+    }
+
     async function exportTypeScript() {
+      await checkEncryptionKeyPromptAsync();
       const code = await generateTypeScriptCodeAsync();
       navigator.clipboard.writeText(code).then(() => {
         showToast('已复制 routes.ts 到剪贴板');
@@ -1577,6 +1653,7 @@ export const config: ShortLinkConfig = {
 
     // 直接保存修改到本地文件（核心实现：File System Access API 直接写回）
     async function saveConfigFile() {
+      await checkEncryptionKeyPromptAsync();
       const code = await generateTypeScriptCodeAsync();
 
       // 1. 若当前已通过读取持有本地文件句柄，直接原地修改写回！
@@ -1688,11 +1765,16 @@ ROUTES_KEY=${key}
       state.links = {
         '/': 'https://stevezmt.top',
       };
+      state.settings.encryptAllRoutes = false;
+      const chk = document.getElementById('cfgEncryptAllRoutes');
+      if (chk) chk.checked = false;
+      syncEncryptionControls();
       renderAll();
       showToast('已重置为仅包含自身重定向的极简默认模板');
     }
 
-    // 初始化渲染
+    // 初始化同步与渲染
+    syncEncryptionControls();
     renderAll();
   </script>
 </body>

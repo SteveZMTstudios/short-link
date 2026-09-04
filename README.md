@@ -45,7 +45,7 @@
 
 ---
 
-## 🏛 1. 核心架构与设计
+##  1. 核心架构与设计
 
 本服务运行于 Cloudflare 全球边缘网络，旨在解决现代短链接系统常见的痛点：配置分散、规则嵌套过深、公网仓库暴露私密跳转源、明文密码泄露、以及弱网/受限环境下客户端无法跳转等问题。
 
@@ -56,7 +56,7 @@
 
 ---
 
-## 🌟 2. 特性概览
+##  2. 特性概览
 
 | 功能模块 | 说明 | 性能 / 安全指标 |
 | :--- | :--- | :--- |
@@ -71,7 +71,7 @@
 
 ---
 
-## 🔄 3. 三层重定向兜底机制 (Tiered Redirection)
+##  3. 三层重定向兜底机制 (Tiered Redirection)
 
 传统短链接服务往往仅依赖 HTTP 状态码 `302 Found` + `Location` Header。但在微端（如特定 App 内置 Webview）、安全沙箱、反向代理劫持或忽略跳转头的特定客户端中，极易发生“白屏”或“死链接”。
 
@@ -90,12 +90,12 @@
 [第 3 层] JS 脚本层：<script>window.location.replace("...");</script> (DOM 脚本强制替换)
      │ (若完全禁用脚本)
      ▼
-[兜底交互] 现代化玻璃拟态 UI：提供醒目的原链接卡片与「立即前往」直接点击按钮
+[兜底交互]
 ```
 
 ---
 
-## 🚦 4. 路由引擎与匹配规则详解
+##  4. 路由引擎与匹配规则详解
 
 路由表统一在 [src/config/routes.ts](file:///e:/Project/short-link/src/config/routes.ts) 的 `links` 字段中配置。
 
@@ -214,7 +214,7 @@ links: {
 
 ---
 
-## 🏷 5. UTM 来源追踪与参数透传
+##  5. UTM 来源追踪与参数透传
 
 ### 1. 全局默认 UTM 继承
 在 `settings.defaultUtm` 中设置全局默认来源：
@@ -246,7 +246,7 @@ settings: {
 
 ---
 
-## 🛡 6. 安全防护体系
+##  6. 安全防护体系
 
 ### 6.1 访客访问密码保护：直接指定加盐哈希 (零明文存储)
 为短链增加访问密码，未授权访问时触发标准的浏览器 HTTP 401 Basic Auth 登录对话框。
@@ -317,7 +317,7 @@ settings: {
 
 ---
 
-## 🚦 7. 规则引擎与风控拦截
+##  7. 规则引擎与风控拦截
 
 可以在短链选项中声明规则，由边缘节点在处理跳转前拦截非法请求：
 
@@ -374,7 +374,7 @@ settings: {
 
 ---
 
-## 🚫 8. 自定义 404 兜底与异常处理
+##  8. 自定义 404 兜底与异常处理
 
 当请求的主机名或路径在路由表中未找到匹配时，触发 404 处理机制。
 
@@ -396,7 +396,7 @@ settings: {
 
 ---
 
-## 💻 9. 本地可视化管理面板 (admin.html)
+##  9. 本地可视化管理面板 (admin.html)
 
 为了在不暴露任何公网后台接口的前提下方便地管理配置，项目附带了一个完全在本地运行的单文件工具 [admin.html](file:///e:/Project/short-link/admin.html)。
 
@@ -417,7 +417,7 @@ settings: {
 
 ---
 
-## 📖 10. 配置参考手册 (API Reference)
+##  10. 配置参考手册 (API Reference)
 
 ### 完整配置文件模版 (`src/config/routes.ts`)
 
@@ -477,7 +477,7 @@ export const config: ShortLinkConfig = {
 
 ---
 
-## 📁 11. 项目结构与测试体系
+##  11. 项目结构与测试体系
 
 ### 目录结构
 ```text
@@ -523,27 +523,9 @@ npm test
 npm run typecheck
 ```
 
-测试执行结果：
-```text
- ✓ test/router.test.ts (9 tests)
- ✓ test/dynamic_routes.test.ts (4 tests)
- ✓ test/notfound.test.ts (2 tests)
- ✓ test/provider.test.ts (4 tests)
- ✓ test/rules.test.ts (4 tests)
- ✓ test/redirect.test.ts (5 tests)
- ✓ test/security_fixes.test.ts (11 tests)
- ✓ test/auth.test.ts (6 tests)
- ✓ test/crypto.test.ts (4 tests)
- ✓ test/declarative.test.ts (6 tests)
- ✓ test/performance_benchmark.test.ts (3 tests) [实测 HKDF < 0.3ms，1,000 并发 ~8,000+ RPS]
-
- Test Files  11 passed (11)
-      Tests  58 passed (58)
-```
-
 ---
 
-## 🚀 12. 快速开始与部署指南
+##  12. 快速开始与部署指南
 
 ### 1. 本地启动开发预览
 ```bash
