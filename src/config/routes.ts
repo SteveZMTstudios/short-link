@@ -14,7 +14,6 @@ export const config: ShortLinkConfig = {
 
   links: {
     '/': 'https://stevezmt.top',
-    test: 'aes-gcm:v1:4Xbi9L4OgDE58ZziPf6TjO032BTv5uG9c2C4g6GqktYzrFwoFF8NGmBlsOJ77WVtm6hanvToxA==',
     'blog:/*': 'https://blog.stevezmt.top/$1',
     pubgpg: 'https://key.stevezmt.top',
     'academic-abuse': 'https://link.stevezmt.top/avoid-political-disputes/index.html',
