@@ -1,7 +1,7 @@
 /**
  * Short Link Configuration Table.
  * Generated via admin.html
-  */
+ */
 
 import { ShortLinkConfig } from '../types';
 
@@ -10,6 +10,14 @@ export const config: ShortLinkConfig = {
     domain: 'stev.cc',
     notFoundUrl: 'https://stevezmt.top/404?from=${FULL_URL}',
     notFoundMode: 'redirect',
+    defaultUtm: {
+      utm_source: 'shortlink',
+      utm_medium: 'redirect',
+    },
+    challenge: {
+      provider: 'turnstile',
+      siteKey: '0x4AAAAAAEpTJ77zUTj5eTnC',
+    },
   },
 
   links: {
@@ -20,6 +28,6 @@ export const config: ShortLinkConfig = {
     ethcalc: 'https://link.stevezmt.top/ethtool-advertise-bitmap-calc/index.html',
     'blog/*': 'https://blog.stevezmt.top/$1',
     rss: 'https://blog.stevezmt.top/atom.xml',
-    vcard: 'aes-gcm:v1:GZZdpmkW98GqPCYRkTUZ8UrSCvc6JoMqd0DoW3Gxqgqf73KG6qsBB7u15b5rnrPdNmMYwo/WCP0MQkUg/sTKMOXu5gEORdeK3PztInAkk/j7r1i7+YCH/UKppwLi',
+    vcard: 'aes-gcm:v1:0SRJ9+OmuOyT9jLWBrVT/+cwYCdWQYYKuTVaQPMw59SYfUBYpJxaVWK6rYTZJvn17y/sMRpxDDx9xRVVNDwunsJ6+7I59dqE+GKjrBCutSqutFJgFFNkLwW8Ls3/',
   },
 };
