@@ -1,20 +1,11 @@
 /**
  * Short Link Configuration Table.
- * 
- * ##################################################
- * SAMPLE! REDEPLOY MUST CONFIGURE ME!
- * ##################################################
- * 
- * Read README for details.
- * - Centralized Settings: Domain, 404, and UTM defaults are defined in ONE place.
- * - Minimal Default Template: Only routes root '/' to destination when accessed.
- * - Optional Symmetric Encryption: Supports `encrypted: 'aes-gcm:v1:...'` with ROUTES_KEY env var.
+ * Generated via admin.html
  */
 
 import { ShortLinkConfig } from '../types';
 
 export const config: ShortLinkConfig = {
-  // 1. 全局站点与部署配置
   settings: {
     domain: 'stevezmt.top',
     notFoundUrl: 'https://stevezmt.top/404?from=${FULL_URL}',
@@ -23,10 +14,14 @@ export const config: ShortLinkConfig = {
       utm_source: 'shortlink',
       utm_medium: 'redirect',
     },
+    challenge: {
+      provider: 'cap',
+      siteKey: '8704cf7f-b00c-4801-a1bc-1572e585e623',
+    },
   },
 
-  // 2. 默认路由：仅保留自身被访问时（根路径 /）重定向的目标地址
   links: {
     '/': 'https://stevezmt.top',
+    test: 'aes-gcm:v1:4Xbi9L4OgDE58ZziPf6TjO032BTv5uG9c2C4g6GqktYzrFwoFF8NGmBlsOJ77WVtm6hanvToxA==',
   },
 };
