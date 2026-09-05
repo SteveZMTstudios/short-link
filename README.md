@@ -32,6 +32,7 @@
    - [加盐 SHA-256 密码鉴权 (HTTP 401)](#61-加盐-sha-256-密码鉴权-http-401)
    - [公开仓库防泄露：极速对称加密 (AES-GCM + HKDF)](#62-公开仓库防泄露极速对称加密-aes-gcm--hkdf)
    - [针对 10ms CPU 限制的优化与按需单目标加密](#63-针对-10ms-cpu-限制的优化与按需单目标加密)
+   - [加密目标访问质询与防爬防护 (Turnstile / Altcha / Cap)](#64-加密目标访问质询与防爬防护-challenge--pow-turnstile--altcha--cap)
 7. [规则引擎与风控拦截](#-7-规则引擎与风控拦截)
    - [最低 TLS 版本限制](#71-最低-tls-版本限制)
    - [常见爬虫与恶意 Bot 拦截](#72-常见爬虫与恶意-bot-拦截)
@@ -314,6 +315,106 @@ settings: {
      '/secret-vault': 'aes-gcm:v1:7D8f...base64...',
    }
    ```
+
+---
+
+### 6.4 加密目标访问质询与防爬防护 (Challenge & PoW: Turnstile / Altcha / Cap)
+
+#### 背景与防爬痛点
+在公开代码仓库中，若仅对跳转长链接采用单项对称加密 (`target: 'aes-gcm:v1:...'`)，路由路径（如 `/secret-doc`、`/project-x`）依然以明文形式存在于 Git 中。
+爬虫只要查看公开仓库中的路由键，即可通过自动化脚本向部署的 Worker 发起并发请求，迫使 Worker 代为解密并重定向，从而**遍历导出整张路由表**！
+
+#### 解决方案：人机验证与工作量证明机制
+当访问单项加密的敏感目标时，Worker 自动拦截请求并呈现极简质询页面（支持 **Cloudflare Turnstile**、**Altcha**、**Cap**）。
+爬虫若要获取解密目标，必须付出极高的人机算力或打码成本，从而彻底瓦解脚本批量爬取。
+
+```
+访客请求加密路由 (GET /secret)
+          │
+          ▼
+   是否已全表加密？ ─── 是 ───► [索引未知，免质询] ──► 302 直接跳转
+          │ 否
+          ▼
+   路由是否需要质询？ (单目标加密且配置了质询提供商)
+          │
+          ├─► 持有有效 Clearance Cookie ──► 302 直接跳转
+          │
+          ▼
+  返回验证页 (200 OK)
+          │
+          ▼
+  客户端提交验证 Token (POST /secret)
+          │
+          ├─► 校验失败 ──► 403 Forbidden 并带重试卡片
+          │
+          ▼
+  校验成功 ──► 303 See Other 重定向至真实解密目标
+```
+
+#### 极简配置示例
+
+##### 1. 在 `routes.ts` 中配置提供商与公钥
+```typescript
+export const config: ShortLinkConfig = {
+  settings: {
+    domain: 'stevezmt.top',
+    // 启用人机质询防护
+    challenge: {
+      provider: 'turnstile', // 'turnstile' | 'altcha' | 'cap'
+      siteKey: '0x4AAAAAAATestSiteKey',
+      // （可选）质询通过后发放短期 HMAC 签名免验证 Cookie（秒），0 表示单次有效（默认）
+      clearanceDuration: 300,
+    },
+  },
+  links: {
+    // 1. 普通短链：直接 302 重定向
+    '/blog': 'https://stevezmt.top/blog',
+
+    // 2. 加密短链：自动触发 Turnstile 人机验证
+    '/vault': 'aes-gcm:v1:7D8f...',
+
+    // 3. 显式覆盖：单条路由可通过 challenge: false 豁免，或指定单独提供商
+    '/internal': {
+      target: 'aes-gcm:v1:...',
+      challenge: false, // 豁免质询
+    },
+    '/heavy-download': {
+      target: 'https://example.com/huge-file.iso',
+      challenge: 'altcha', // 强制单独使用 Altcha 工作量证明
+    },
+  },
+};
+```
+
+##### 2. 在 `.env` / Cloudflare Secrets 中注入密钥
+```env
+# 选型：turnstile | altcha | cap
+CHALLENGE_PROVIDER=turnstile
+
+# Cloudflare Turnstile 密钥
+TURNSTILE_SITE_KEY=0x4AAAAAAATestSiteKey
+TURNSTILE_SECRET_KEY=0x4AAAAAAATestSecretKey
+
+# （可选）Altcha 密钥：留空则自动借用 ROUTES_KEY 进行原生 WebCrypto HMAC-SHA256 签名计算
+ALTCHA_HMAC_KEY=altcha_hmac_secret_key_1234
+
+# （可选）Cap 密钥与端点 (默认内置 Serverless 引擎，零服务器/零运维；亦可对接外部自建端点)
+# CAP_SECRET_KEY=cap_secret_key  # 留空自动借用 ROUTES_KEY
+# CAP_SITE_KEY=cap_site_key      # 留空自动使用内置默认值
+# CAP_ENDPOINT=https://cap.yourdomain.com  # 留空自动启用 Worker 内置引擎 (零服务器)；填入则走外部服务
+```
+
+> 另请参阅：  
+> [Cloudflare Turnstile 部署文档](https://developers.cloudflare.com/turnstile/)  
+> [Altcha 集成文档](https://altcha.org/docs/integration/quick-start/)  
+> [Cap 部署文档](https://trycap.dev/guide/)  
+
+#### 特色与性能指标
+- **双重 0 服务器架构（Zero Infrastructure Waste）**：
+  - **Altcha**：原生 Web Crypto API 签发难度题目，解题与验签均在 Edge 完成，**0 外部网络请求**；同时开放 `GET /_challenge/altcha` 供动态调用。
+  - **Cap**：融合官方 `capjs-core` 与 `CFCap` 优秀实践，内置无状态 PoW 引擎与 `/_challenge/cap/*` 自动端点，**完全无需购买服务器、无需配置 Docker、无需开通付费 Durable Objects**，在 Cloudflare 免费版计划上即可 100% 零成本独立运行！
+- **极致精炼（Zero Bloat）**：页面 0 外部 CSS、0 外部字体，仅加载必要的小部件脚本；完全适配浏览器深色模式 (`prefers-color-scheme: dark`) 与 `<noscript>` 友好提示。
+- **智能免质询**：启用了全表加密 (`config.encrypted`) 时，由于代码仓库中所有短链路径本来就是密文、索引完全未知，因此 Worker 自动豁免质询，兼顾极致性能与访问体验。
 
 ---
 

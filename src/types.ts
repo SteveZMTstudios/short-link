@@ -52,6 +52,42 @@ export type RuleAction =
 export type RuleResult = RuleAction | boolean | void | null | undefined;
 export type Rule = (ctx: RouteContext) => RuleResult | Promise<RuleResult>;
 
+export type ChallengeProviderType = 'turnstile' | 'altcha' | 'cap';
+
+export interface ChallengeConfig {
+  /**
+   * Challenge provider type: 'turnstile' | 'altcha' | 'cap'.
+   */
+  provider?: ChallengeProviderType;
+  /**
+   * Public site key (for Turnstile or Cap).
+   * Can also be provided via TURNSTILE_SITE_KEY or CAP_SITE_KEY environment variables.
+   */
+  siteKey?: string;
+  /**
+   * Cap API endpoint for self-hosted instances (e.g. 'https://cap.yourdomain.com').
+   * Cap (trycap.dev) is an open-source self-hosted CAPTCHA and has no public cloud API.
+   */
+  capEndpoint?: string;
+  /**
+   * Custom Cap widget script URL. Defaults to official CDN.
+   */
+  capScriptUrl?: string;
+  /**
+   * Altcha maximum number for PoW difficulty. Defaults to 100000.
+   */
+  altchaMaxNumber?: number;
+  /**
+   * Altcha challenge expiration in seconds. Defaults to 300 (5 minutes).
+   */
+  altchaExpiresIn?: number;
+  /**
+   * Duration in seconds for which an HMAC-signed clearance cookie is valid.
+   * 0 means one-shot (redirect immediately, no persistent cookie). Default: 0.
+   */
+  clearanceDuration?: number;
+}
+
 export interface LinkOptions {
   target: string | ((ctx: RouteContext) => string | Promise<string>);
   /**
@@ -69,6 +105,14 @@ export interface LinkOptions {
   utm?: UtmConfig;
   redirectStatus?: number;
   rules?: Rule[];
+  /**
+   * Human verification / Proof-of-Work challenge protection:
+   * - undefined: Automatically enabled if target is individually encrypted and full-table encryption is not used
+   * - false: Explicitly disable challenge even if target is encrypted
+   * - true: Enforce challenge using provider from settings.challenge or env
+   * - 'turnstile' | 'altcha' | 'cap': Enforce challenge using specific provider
+   */
+  challenge?: boolean | ChallengeProviderType;
 }
 
 export type LinkItem = string | LinkOptions;
@@ -79,6 +123,11 @@ export interface SettingsConfig {
   notFoundUrl?: string;
   notFoundMode?: 'redirect' | 'proxy';
   defaultUtm?: UtmConfig;
+  /**
+   * Security challenge configuration (Turnstile, Altcha, Cap)
+   * used to prevent automated scraping of encrypted links.
+   */
+  challenge?: ChallengeConfig;
 }
 
 /**
@@ -112,6 +161,14 @@ export interface RouteDefinition {
   auth?: AuthConfig;
   rules?: Rule[];
   redirectStatus?: number;
+  /**
+   * Whether this route requires challenge verification, or provider name.
+   */
+  challenge?: boolean | ChallengeProviderType;
+  /**
+   * Internal metadata tracking whether this route's target was individually encrypted in config.
+   */
+  isIndividuallyEncrypted?: boolean;
 }
 
 export interface NotFoundConfig {
@@ -122,6 +179,7 @@ export interface NotFoundConfig {
 export interface AppConfig {
   routes: RouteDefinition[];
   notFound?: NotFoundConfig;
+  settings?: SettingsConfig;
 }
 
 export interface RouteProviderContext {
@@ -157,6 +215,17 @@ export interface Env {
   ENCRYPTION_KEY?: string;
   /** Optional Cloudflare KV namespace for dynamic routes */
   SHORT_LINK_KV?: KVNamespace;
+
+  /** Security Challenge Environment Variables */
+  CHALLENGE_PROVIDER?: ChallengeProviderType;
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  ALTCHA_HMAC_KEY?: string;
+  CAP_SITE_KEY?: string;
+  CAP_SECRET_KEY?: string;
+  CAP_ENDPOINT?: string;
+
   [key: string]: unknown;
 }
+
 

@@ -437,8 +437,10 @@
 </head>
 <body>
 
-  <!-- 隐藏的文件选择输入，用于从磁盘读取 routes.ts -->
+  <!-- 隐藏的文件选择输入，用于从磁盘读取 routes.ts、CSV 与 .dev.vars/.env -->
   <input type="file" id="filePicker" accept=".ts,.js,.json" style="display:none" onchange="onFileSelected(event)">
+  <input type="file" id="csvPicker" accept=".csv,text/csv" style="display:none" onchange="onCsvFileSelected(event)">
+  <input type="file" id="envPicker" accept=".env,.vars,.dev.vars,text/plain" style="display:none" onchange="onEnvFileSelected(event)">
 
   <div class="container">
     <header>
@@ -455,13 +457,22 @@
         <button class="btn" onclick="openFileSelector()" title="打开并载入本地 routes.ts 配置文件">
           <i class="mdui-icon material-icons">folder_open</i> 打开配置
         </button>
-        <button class="btn" onclick="exportEnvFile()" title="复制供本地与 Worker 读取的 .dev.vars / .env 环境变量文件">
-          <i class="mdui-icon material-icons">vpn_key</i> 复制 .env 密钥
+        <button class="btn" onclick="openEnvSelector()" title="载入本地 .dev.vars / .env 环境变量文件">
+          <i class="mdui-icon material-icons">vpn_key</i> 载入 .env
+        </button>
+        <button class="btn" onclick="openCsvSelector()" title="从 CSV 文件批量导入短链接规则">
+          <i class="mdui-icon material-icons">file_upload</i> 导入 CSV
+        </button>
+        <button class="btn" onclick="exportCsvFile()" title="导出全部规则为明文 CSV 表格 (可直接用 Excel / WPS 编辑)">
+          <i class="mdui-icon material-icons">file_download</i> 导出 CSV (明文)
+        </button>
+        <button class="btn" onclick="saveEnvFile()" title="保存/导出供本地与 Worker 读取的 .dev.vars 环境变量文件">
+          <i class="mdui-icon material-icons">save_alt</i> 保存 .env
         </button>
         <button class="btn" onclick="exportTypeScript()" title="复制生成的完整 TypeScript 配置文件">
           <i class="mdui-icon material-icons">content_copy</i> 复制 routes.ts
         </button>
-        <button class="btn btn-primary" id="saveConfigBtn" onclick="saveConfigFile()" title="直接保存修改到文件 (Ctrl+S)">
+        <button class="btn btn-primary" id="saveConfigBtn" onclick="saveConfigFile()" title="直接保存修改到 routes.ts (Ctrl+S)">
           <i class="mdui-icon material-icons" id="saveBtnIcon">save</i> <span id="saveBtnText">保存配置</span>
         </button>
       </div>
@@ -488,17 +499,106 @@
           </div>
         </div>
 
+        <div class="form-row">
+          <div class="form-group" style="flex: 1.3;">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">enhanced_encryption</i> 路由加密密钥 (ROUTES_KEY，环境变量)
+            </label>
+            <input type="text" id="cfgEncryptionKey" class="form-control mono" placeholder="设置密钥后将加密跳转目标，防止公开仓库泄露；由 Worker 运行时解密" oninput="onSettingsChange()">
+            <div style="margin-top: 0.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; padding: 0.45rem 0.75rem; background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.16); border-radius: 6px;">
+              <label style="display: inline-flex; align-items: center; gap: 0.45rem; cursor: pointer; color: #38bdf8; font-weight: 500; font-size: 0.85rem; margin: 0;">
+                <input type="checkbox" id="cfgEncryptAllRoutes" style="cursor: pointer; width: 16px; height: 16px;" onchange="onSettingsChange()">
+                <span>加密路由</span>
+              </label>
+              <span style="font-size: 0.76rem; color: var(--text-muted);">除根路径直达外全部统一加密</span>
+            </div>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">lock_open</i> 独立访客访问主密码 (AUTH_PASSWORD，可选)
+            </label>
+            <input type="text" id="cfgAuthPassword" class="form-control mono" placeholder="留空默认复用 ROUTES_KEY 作为访客密码" oninput="onSettingsChange()">
+            <span style="display: block; margin-top: 0.35rem; font-size: 0.76rem; color: var(--text-muted);">用于受保护短链的访客验证，与加解密密钥解耦</span>
+          </div>
+        </div>
+
         <div class="form-group">
           <label>
-            <i class="mdui-icon material-icons" style="font-size:16px;">enhanced_encryption</i> 路由加密密钥 (ROUTES_KEY，可选)
+            <i class="mdui-icon material-icons" style="font-size:16px;">verified_user</i> 访问质询与防爬防护 (Turnstile / Altcha / Cap 环境变量与密钥)
           </label>
-          <input type="text" id="cfgEncryptionKey" class="form-control mono" placeholder="设置密钥后将加密跳转目标，防止公开仓库被一键转储；运行时由 Worker 环境变量解密" oninput="onSettingsChange()">
-          <div style="margin-top: 0.6rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; padding: 0.55rem 0.8rem; background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.16); border-radius: 6px;">
-            <label style="display: inline-flex; align-items: center; gap: 0.45rem; cursor: pointer; color: #38bdf8; font-weight: 500; font-size: 0.88rem; margin: 0;">
-              <input type="checkbox" id="cfgEncryptAllRoutes" style="cursor: pointer; width: 16px; height: 16px;" onchange="onSettingsChange()">
-              <span>加密路由</span>
-            </label>
-            <span style="font-size: 0.78rem; color: var(--text-muted);">除根路径直达外全部统一加密</span>
+          <div class="form-row" style="margin-bottom: 0.5rem;">
+            <div class="form-group" style="flex: 1.2;">
+              <select id="cfgChallengeProvider" class="form-control" onchange="onChallengeProviderChange()">
+                <option value="">关闭 (默认不启用)</option>
+                <option value="turnstile">Cloudflare Turnstile (推荐 Cloudflare 原生)</option>
+                <option value="altcha">Altcha (原生边缘计算 PoW，0外部请求)</option>
+                <option value="cap">Cap (trycap.dev 开源验证码)</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <input type="number" id="cfgClearanceDuration" class="form-control" value="0" min="0" placeholder="免验证有效期 (Clearance 秒数，0为单次必做)" oninput="onSettingsChange()">
+            </div>
+          </div>
+
+          <!-- Turnstile 密钥组 -->
+          <div id="cfgTurnstileGroup" style="display: none; background: rgba(56, 189, 248, 0.04); border: 1px solid rgba(56, 189, 248, 0.16); border-radius: 6px; padding: 0.75rem 0.9rem; margin-top: 0.4rem;">
+            <div class="form-row" style="margin-bottom: 0;">
+              <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label style="font-size: 0.8rem; color: var(--text-muted);"><i class="mdui-icon material-icons" style="font-size:14px;">vpn_key</i> TURNSTILE_SITE_KEY (公开公钥)</label>
+                <input type="text" id="cfgTurnstileSiteKey" class="form-control mono" placeholder="0x4AAAAAAA..." oninput="onSettingsChange()">
+              </div>
+              <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label style="font-size: 0.8rem; color: var(--text-muted);"><i class="mdui-icon material-icons" style="font-size:14px;">lock</i> TURNSTILE_SECRET_KEY (服务端私钥)</label>
+                <input type="password" id="cfgTurnstileSecretKey" class="form-control mono" placeholder="0x4AAAAAAA..." oninput="onSettingsChange()">
+              </div>
+            </div>
+          </div>
+
+          <!-- Altcha 密钥组 -->
+          <div id="cfgAltchaGroup" style="display: none; background: rgba(56, 189, 248, 0.04); border: 1px solid rgba(56, 189, 248, 0.16); border-radius: 6px; padding: 0.75rem 0.9rem; margin-top: 0.4rem;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                <label style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0;">
+                  <i class="mdui-icon material-icons" style="font-size:14px;">security</i> ALTCHA_HMAC_KEY (HMAC 签名私钥，建议 ≥32 字符)
+                </label>
+                <button type="button" class="btn btn-sm" onclick="generateAltchaKey()" title="使用 Web Crypto 随机生成 64 位高强度十六进制私钥" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; gap: 0.3rem;">
+                  <i class="mdui-icon material-icons" style="font-size: 14px;">autorenew</i>
+                </button>
+              </div>
+              <input type="text" id="cfgAltchaHmacKey" class="form-control mono" placeholder="留空则自动复用上方 ROUTES_KEY" oninput="onSettingsChange()">
+            </div>
+          </div>
+
+          <!-- Cap 密钥组 -->
+          <div id="cfgCapGroup" style="display: none; background: rgba(56, 189, 248, 0.04); border: 1px solid rgba(56, 189, 248, 0.16); border-radius: 6px; padding: 0.75rem 0.9rem; margin-top: 0.4rem;">
+            <div class="form-row" style="margin-bottom: 0.5rem;">
+              <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                  <label style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0;">
+                    <i class="mdui-icon material-icons" style="font-size:14px;">vpn_key</i> CAP_SITE_KEY (站点公钥)
+                  </label>
+                  <button type="button" class="btn btn-sm" onclick="generateCapSiteKey()" title="随机生成标准 UUID 站点公钥" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; gap: 0.3rem;">
+                    <i class="mdui-icon material-icons" style="font-size: 14px;">autorenew</i>
+                  </button>
+                </div>
+                <input type="text" id="cfgCapSiteKey" class="form-control mono" placeholder="cap_site_key_... 或 UUID" oninput="onSettingsChange()">
+              </div>
+              <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                  <label style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0;">
+                    <i class="mdui-icon material-icons" style="font-size:14px;">lock</i> CAP_SECRET_KEY (服务端私钥)
+                  </label>
+                  <button type="button" class="btn btn-sm" onclick="generateCapSecretKey()" title="使用 Web Crypto 随机生成 64 位高强度十六进制私钥" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; gap: 0.3rem;">
+                    <i class="mdui-icon material-icons" style="font-size: 14px;">autorenew</i>
+                  </button>
+                </div>
+                <input type="text" id="cfgCapSecretKey" class="form-control mono" placeholder="留空自动借用上方 ROUTES_KEY 作为 HMAC 私钥" oninput="onSettingsChange()">
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label style="font-size: 0.8rem; color: var(--text-muted);"><i class="mdui-icon material-icons" style="font-size:14px;">cloud</i> CAP_ENDPOINT (实例端点，留空自动启用 Worker 内置一体化引擎)</label>
+              <input type="text" id="cfgCapEndpoint" class="form-control mono" placeholder="留空默认使用 Worker 内置一体化引擎 (零服务器成本)；亦可填写外部自建实例地址" oninput="onSettingsChange()">
+            </div>
           </div>
         </div>
 
@@ -586,11 +686,26 @@
           </div>
         </div>
 
-        <div class="form-group">
-          <label>
-            <i class="mdui-icon material-icons" style="font-size:16px;">phone_iphone</i> 手机端独立目标 (可选)
-          </label>
-          <input type="text" id="linkMobile" class="form-control" placeholder="留空则手机与电脑访问相同目标">
+        <div class="form-row">
+          <div class="form-group">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">phone_iphone</i> 手机端独立目标 (可选)
+            </label>
+            <input type="text" id="linkMobile" class="form-control" placeholder="留空则手机与电脑访问相同目标">
+          </div>
+          <div class="form-group">
+            <label>
+              <i class="mdui-icon material-icons" style="font-size:16px;">verified_user</i> 人机质询策略 (防批量爬取)
+            </label>
+            <select id="linkChallenge" class="form-control">
+              <option value="">继承全局 (单目标加密自动触发)</option>
+              <option value="false">显式豁免 (不进行人机验证)</option>
+              <option value="true">强制质询 (使用全局提供商)</option>
+              <option value="turnstile">指定 Turnstile</option>
+              <option value="altcha">指定 Altcha (PoW)</option>
+              <option value="cap">指定 Cap</option>
+            </select>
+          </div>
         </div>
 
         <button class="btn btn-primary" style="width: 100%; justify-content: center;" onclick="saveLink()">
@@ -641,6 +756,9 @@
         <button class="tab-btn" id="tabCodeBtn" onclick="switchTab('code')">
           <i class="mdui-icon material-icons">code</i> 完整 routes.ts
         </button>
+        <button class="tab-btn" id="tabEnvBtn" onclick="switchTab('env')">
+          <i class="mdui-icon material-icons">vpn_key</i> 环境变量 (.dev.vars)
+        </button>
       </div>
 
       <!-- Diff 视图面板 -->
@@ -664,6 +782,24 @@
       <div id="codePanel" style="display: none;">
         <div class="diff-container" id="fullCodeBox" style="padding: 1rem; color: #93c5fd; white-space: pre;"></div>
       </div>
+
+      <!-- 环境变量面板 -->
+      <div id="envPanel" style="display: none;">
+        <div class="diff-header" style="justify-content: space-between;">
+          <div style="font-size: 0.85rem; color: var(--text-muted);">
+            本地密钥文件 (<strong class="mono" style="color:#38bdf8;">.dev.vars</strong> / <strong class="mono" style="color:#38bdf8;">.env</strong>)，部署线上通过 <strong class="mono" style="color:#38bdf8;">npx wrangler secret put</strong> 设置
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-sm" onclick="exportEnvFile()" title="复制 .dev.vars 内容到剪贴板">
+              <i class="mdui-icon material-icons" style="font-size:15px;">content_copy</i> 复制内容
+            </button>
+            <button class="btn btn-sm btn-primary" onclick="saveEnvFile()" title="直接保存/下载 .dev.vars 文件">
+              <i class="mdui-icon material-icons" style="font-size:15px;">save</i> 保存 .dev.vars
+            </button>
+          </div>
+        </div>
+        <div class="diff-container" id="fullEnvBox" style="padding: 1rem; color: #a5f3fc; white-space: pre; font-family: 'JetBrains Mono', monospace;"></div>
+      </div>
     </div>
   </div>
 
@@ -677,7 +813,7 @@
     let baselineSourceCode = `/**
  * Short Link Configuration Table.
  * Generated via admin.html
-  */
+ */
 
 import { ShortLinkConfig } from '../types';
 
@@ -707,7 +843,19 @@ export const config: ShortLinkConfig = {
         encryptAllRoutes: false,
         notFoundUrl: 'https://stevezmt.top/404?from=${FULL_URL}',
         notFoundMode: 'redirect',
-        defaultUtm: { utm_source: 'shortlink', utm_medium: 'redirect' }
+        defaultUtm: { utm_source: 'shortlink', utm_medium: 'redirect' },
+        challenge: { provider: '', siteKey: '', clearanceDuration: 0, capEndpoint: '' }
+      },
+      env: {
+        routesKey: '',
+        authPassword: '',
+        challengeProvider: '',
+        turnstileSiteKey: '',
+        turnstileSecretKey: '',
+        altchaHmacKey: '',
+        capSiteKey: '',
+        capSecretKey: '',
+        capEndpoint: '',
       },
       links: {
         '/': 'https://stevezmt.top',
@@ -716,6 +864,7 @@ export const config: ShortLinkConfig = {
 
     let activeTab = 'diff';
     let currentFileHandle = null;
+    let currentEnvHandle = null;
 
     function updateSaveButtonState() {
       const btnText = document.getElementById('saveBtnText');
@@ -733,110 +882,751 @@ export const config: ShortLinkConfig = {
       }
     }
 
-    // -------------------------------------------------------------
-    // Web Crypto 原生 AES-GCM (256-bit) 与 HKDF (SHA-256) 极速对称加解密算法
-    // 与 Worker src/utils/crypto.ts 严格对齐，执行耗时 < 0.1ms
-    // -------------------------------------------------------------
-    const SALT_BYTES = 16;
-    const IV_BYTES = 12;
-    const PAYLOAD_PREFIX = 'aes-gcm:v1:';
-    const HKDF_INFO = new TextEncoder().encode('cf-worker-shortlink-v1');
+    // =============================================================
+    // 1. CryptoService (深模块：封装 Web Crypto HKDF/AES-GCM 与加盐哈希)
+    // =============================================================
+    const CryptoService = {
+      SALT_BYTES: 16,
+      IV_BYTES: 12,
+      PAYLOAD_PREFIX: 'aes-gcm:v1:',
+      HKDF_INFO: new TextEncoder().encode('cf-worker-shortlink-v1'),
 
-    function bytesToBase64(bytes) {
-      let binary = '';
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      return btoa(binary);
-    }
+      bytesToBase64(bytes) {
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary);
+      },
 
-    function base64ToBytes(base64) {
-      const binary = atob(base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      return bytes;
-    }
+      base64ToBytes(base64) {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes;
+      },
 
-    // 与 Worker crypto.ts 严格一致的 HKDF 密钥派生
-    async function deriveAesKey(password, salt, usage) {
-      const encoder = new TextEncoder();
-      const keyMaterial = await crypto.subtle.importKey(
-        'raw',
-        encoder.encode(password),
-        'HKDF',
-        false,
-        ['deriveKey']
-      );
+      async deriveAesKey(password, salt, usage) {
+        const encoder = new TextEncoder();
+        const keyMaterial = await crypto.subtle.importKey(
+          'raw',
+          encoder.encode(password),
+          'HKDF',
+          false,
+          ['deriveKey']
+        );
 
-      return crypto.subtle.deriveKey(
-        {
-          name: 'HKDF',
-          salt,
-          info: HKDF_INFO,
-          hash: 'SHA-256',
-        },
-        keyMaterial,
-        {
-          name: 'AES-GCM',
-          length: 256,
-        },
-        false,
-        usage
-      );
-    }
+        return crypto.subtle.deriveKey(
+          {
+            name: 'HKDF',
+            salt,
+            info: this.HKDF_INFO,
+            hash: 'SHA-256',
+          },
+          keyMaterial,
+          {
+            name: 'AES-GCM',
+            length: 256,
+          },
+          false,
+          usage
+        );
+      },
 
-    async function encryptData(data, password) {
-      const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
-      const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
-      const key = await deriveAesKey(password, salt, ['encrypt']);
-      const jsonString = typeof data === 'string' ? data : JSON.stringify(data);
-      const cipherBuffer = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        new TextEncoder().encode(jsonString)
-      );
-      const cipherArray = new Uint8Array(cipherBuffer);
-      const combined = new Uint8Array(salt.length + iv.length + cipherArray.length);
-      combined.set(salt, 0);
-      combined.set(iv, salt.length);
-      combined.set(cipherArray, salt.length + iv.length);
-      return PAYLOAD_PREFIX + bytesToBase64(combined);
-    }
+      async encryptData(data, password) {
+        const salt = crypto.getRandomValues(new Uint8Array(this.SALT_BYTES));
+        const iv = crypto.getRandomValues(new Uint8Array(this.IV_BYTES));
+        const key = await this.deriveAesKey(password, salt, ['encrypt']);
+        const jsonString = typeof data === 'string' ? data : JSON.stringify(data);
+        const cipherBuffer = await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv },
+          key,
+          new TextEncoder().encode(jsonString)
+        );
+        const cipherArray = new Uint8Array(cipherBuffer);
+        const combined = new Uint8Array(salt.length + iv.length + cipherArray.length);
+        combined.set(salt, 0);
+        combined.set(iv, salt.length);
+        combined.set(cipherArray, salt.length + iv.length);
+        return this.PAYLOAD_PREFIX + this.bytesToBase64(combined);
+      },
 
-    async function decryptData(payload, password) {
-      const cleanPayload = payload.trim();
-      let base64Part = cleanPayload;
-      if (cleanPayload.startsWith('aes-gcm:v1:')) {
-        base64Part = cleanPayload.slice('aes-gcm:v1:'.length);
-      } else if (cleanPayload.startsWith('aes-gcm:v2:')) {
-        base64Part = cleanPayload.slice('aes-gcm:v2:'.length);
+      async decryptData(payload, password) {
+        if (typeof payload !== 'string') return payload;
+        const cleanPayload = payload.trim();
+        let base64Part = cleanPayload;
+        if (cleanPayload.startsWith('aes-gcm:v1:')) {
+          base64Part = cleanPayload.slice('aes-gcm:v1:'.length);
+        } else if (cleanPayload.startsWith('aes-gcm:v2:')) {
+          base64Part = cleanPayload.slice('aes-gcm:v2:'.length);
+        } else {
+          return cleanPayload;
+        }
+
+        const combined = this.base64ToBytes(base64Part);
+        const salt = combined.slice(0, this.SALT_BYTES);
+        const iv = combined.slice(this.SALT_BYTES, this.SALT_BYTES + this.IV_BYTES);
+        const ciphertext = combined.slice(this.SALT_BYTES + this.IV_BYTES);
+        const key = await this.deriveAesKey(password, salt, ['decrypt']);
+        const decryptedBuffer = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv },
+          key,
+          ciphertext
+        );
+        const decryptedText = new TextDecoder().decode(decryptedBuffer);
+        try {
+          return JSON.parse(decryptedText);
+        } catch (_) {
+          return decryptedText;
+        }
+      },
+
+      async computeSaltedHash(password, salt) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(password + ":" + salt);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      },
+
+      async hashPassword(password, salt) {
+        if (!password) return '';
+        if (password.startsWith('sha256:')) return password;
+        const hex = await this.computeSaltedHash(password, salt);
+        return 'sha256:' + hex;
       }
-      const combined = base64ToBytes(base64Part);
-      const salt = combined.slice(0, SALT_BYTES);
-      const iv = combined.slice(SALT_BYTES, SALT_BYTES + IV_BYTES);
-      const ciphertext = combined.slice(SALT_BYTES + IV_BYTES);
-      const key = await deriveAesKey(password, salt, ['decrypt']);
-      const decryptedBuffer = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        ciphertext
-      );
-      const decryptedText = new TextDecoder().decode(decryptedBuffer);
-      try {
-        return JSON.parse(decryptedText);
-      } catch (_) {
-        return decryptedText;
-      }
-    }
+    };
 
-    // -------------------------------------------------------------
-    // 计算密码加盐 SHA-256 哈希
-    // -------------------------------------------------------------
-    async function computeSaltedHash(password, salt) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(password + ":" + salt);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
+    // =============================================================
+    // 2. CsvService (深模块：RFC 4180 状态机解析与全明文序列化)
+    // =============================================================
+    const CsvService = {
+      escapeCell(val) {
+        if (val === null || val === undefined) return '';
+        const str = String(val);
+        if (/[",\r\n]/.test(str)) {
+          return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+      },
+
+      /**
+       * 导出当前短链接规则为 100% 明文的 RFC 4180 CSV 字符串
+       * @param {Record<string, any>} links
+       * @param {Function} decryptFn (ciphertext) => Promise<string>
+       * @returns {Promise<string>}
+       */
+      async exportPlaintext(links, decryptFn) {
+        const headers = ['Path', 'Target', 'Password', 'MinTLS', 'BlockBots', 'Mobile', 'Challenge'];
+        const rows = [headers.join(',')];
+
+        for (const [path, val] of Object.entries(links)) {
+          let target = '';
+          let password = '';
+          let minTls = '';
+          let blockBots = '';
+          let mobile = '';
+          let challenge = '';
+
+          if (typeof val === 'string') {
+            target = val;
+          } else if (val && typeof val === 'object') {
+            target = val.target || '';
+            password = val.password || '';
+            minTls = val.minTls || '';
+            blockBots = val.blockBots ? 'true' : 'false';
+            mobile = val.mobile || '';
+            if (val.challenge !== undefined) {
+              challenge = String(val.challenge);
+            }
+          }
+
+          // 核心准则：导出的 CSV 保证全部为明文。若存在 AES-GCM 密文则在此解密为明文 URL
+          if (typeof target === 'string' && target.startsWith('aes-gcm:')) {
+            target = await decryptFn(target);
+          }
+          if (typeof mobile === 'string' && mobile.startsWith('aes-gcm:')) {
+            mobile = await decryptFn(mobile);
+          }
+
+          const row = [
+            this.escapeCell(path),
+            this.escapeCell(target),
+            this.escapeCell(password),
+            this.escapeCell(minTls),
+            this.escapeCell(blockBots),
+            this.escapeCell(mobile),
+            this.escapeCell(challenge),
+          ];
+          rows.push(row.join(','));
+        }
+
+        // 添加 UTF-8 BOM (\uFEFF) 杜绝 Excel 打开中文乱码，采用标准 CRLF 换行
+        return '\uFEFF' + rows.join('\r\n') + '\r\n';
+      },
+
+      /**
+       * RFC 4180 状态机解析器，严格支持单元格内的换行、逗号与双引号转义
+       */
+      parseRows(text) {
+        let clean = text;
+        if (clean.charCodeAt(0) === 0xFEFF) {
+          clean = clean.slice(1);
+        }
+        const rows = [];
+        let currentRow = [];
+        let currentCell = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < clean.length; i++) {
+          const ch = clean[i];
+          const next = clean[i + 1];
+
+          if (inQuotes) {
+            if (ch === '"') {
+              if (next === '"') {
+                currentCell += '"';
+                i++; // 跳过转义的双引号
+              } else {
+                inQuotes = false;
+              }
+            } else {
+              currentCell += ch;
+            }
+          } else {
+            if (ch === '"') {
+              inQuotes = true;
+            } else if (ch === ',') {
+              currentRow.push(currentCell);
+              currentCell = '';
+            } else if (ch === '\r') {
+              if (next === '\n') i++;
+              currentRow.push(currentCell);
+              currentCell = '';
+              if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+                rows.push(currentRow);
+              }
+              currentRow = [];
+            } else if (ch === '\n') {
+              currentRow.push(currentCell);
+              currentCell = '';
+              if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+                rows.push(currentRow);
+              }
+              currentRow = [];
+            } else {
+              currentCell += ch;
+            }
+          }
+        }
+
+        if (currentCell !== '' || currentRow.length > 0) {
+          currentRow.push(currentCell);
+          if (currentRow.length > 1 || (currentRow.length === 1 && currentRow[0].trim() !== '')) {
+            rows.push(currentRow);
+          }
+        }
+
+        return rows;
+      },
+
+      /**
+       * 解析 CSV 为标准化短链规则集（定义错误于无形，容忍中英文字段名与省略表头）
+       */
+      async parse(csvText, defaultSalt) {
+        const rawRows = this.parseRows(csvText);
+        if (rawRows.length === 0) {
+          return { links: {}, count: 0, warnings: [] };
+        }
+
+        const warnings = [];
+        let dataStartIdx = 0;
+
+        const firstRowLower = rawRows[0].map(c => c.trim().toLowerCase());
+        const isHeader = firstRowLower.some(c => ['path', 'target', 'url', 'route', '路径', '目标'].includes(c));
+
+        const colIndex = {
+          path: -1,
+          target: -1,
+          password: -1,
+          minTls: -1,
+          blockBots: -1,
+          mobile: -1,
+          challenge: -1,
+        };
+
+        if (isHeader) {
+          dataStartIdx = 1;
+          firstRowLower.forEach((col, idx) => {
+            if (['path', 'route', '路径', '短链路径', '访问路径'].includes(col)) colIndex.path = idx;
+            else if (['target', 'url', 'dest', 'destination', '目标', '跳转目标', '目标网址'].includes(col)) colIndex.target = idx;
+            else if (['password', 'pwd', 'pass', 'hash', '密码', '访问密码'].includes(col)) colIndex.password = idx;
+            else if (['mintls', 'tls', 'min_tls', '最低tls', '安全协议'].includes(col)) colIndex.minTls = idx;
+            else if (['blockbots', 'block_bots', 'bot', '拦截爬虫', '屏蔽爬虫'].includes(col)) colIndex.blockBots = idx;
+            else if (['mobile', 'phone', '移动端', '手机端', '手机独立跳转', '手机独立目标'].includes(col)) colIndex.mobile = idx;
+            else if (['challenge', 'pow', 'captcha', 'turnstile', '质询', '人机验证', '人机质询'].includes(col)) colIndex.challenge = idx;
+          });
+        }
+
+        // 若无表头或第一行为实际规则，按默认列位置顺序回退匹配
+        if (colIndex.path === -1) colIndex.path = 0;
+        if (colIndex.target === -1) colIndex.target = 1;
+        if (colIndex.password === -1 && firstRowLower.length > 2) colIndex.password = 2;
+        if (colIndex.minTls === -1 && firstRowLower.length > 3) colIndex.minTls = 3;
+        if (colIndex.blockBots === -1 && firstRowLower.length > 4) colIndex.blockBots = 4;
+        if (colIndex.mobile === -1 && firstRowLower.length > 5) colIndex.mobile = 5;
+        if (colIndex.challenge === -1 && firstRowLower.length > 6) colIndex.challenge = 6;
+
+        const parsedLinks = {};
+        let count = 0;
+
+        for (let i = dataStartIdx; i < rawRows.length; i++) {
+          const row = rawRows[i];
+          let path = (row[colIndex.path] || '').trim();
+          let target = (row[colIndex.target] || '').trim();
+
+          if (!path || !target) {
+            continue; // 静默忽略无效空行，避免抛出冗余报错
+          }
+
+          if (!path.startsWith('/') && !path.startsWith('regex:') && !path.includes(':')) {
+            path = '/' + path;
+          }
+
+          const rawPwd = colIndex.password !== -1 ? (row[colIndex.password] || '').trim() : '';
+          const rawMinTls = colIndex.minTls !== -1 ? (row[colIndex.minTls] || '').trim() : '';
+          const rawBlockBots = colIndex.blockBots !== -1 ? (row[colIndex.blockBots] || '').trim().toLowerCase() : '';
+          const rawMobile = colIndex.mobile !== -1 ? (row[colIndex.mobile] || '').trim() : '';
+          const rawChallenge = colIndex.challenge !== -1 ? (row[colIndex.challenge] || '').trim().toLowerCase() : '';
+
+          const hasExtras = rawPwd || rawMinTls || ['true', '1', 'yes'].includes(rawBlockBots) || rawMobile || rawChallenge;
+
+          if (!hasExtras) {
+            parsedLinks[path] = target;
+          } else {
+            const item = { target };
+            if (rawPwd) {
+              item.password = await CryptoService.hashPassword(rawPwd, defaultSalt);
+            }
+            if (rawMinTls) {
+              item.minTls = rawMinTls;
+            }
+            if (['true', '1', 'yes'].includes(rawBlockBots)) {
+              item.blockBots = true;
+            }
+            if (rawMobile) {
+              item.mobile = rawMobile;
+            }
+            if (rawChallenge) {
+              if (rawChallenge === 'true' || rawChallenge === '1') item.challenge = true;
+              else if (rawChallenge === 'false' || rawChallenge === '0') item.challenge = false;
+              else item.challenge = rawChallenge;
+            }
+            parsedLinks[path] = item;
+          }
+          count++;
+        }
+
+        return { links: parsedLinks, count, warnings };
+      }
+    };
+
+    // =============================================================
+    // 3. EnvService (深模块：Dotenv 规范解析与格式化)
+    // =============================================================
+    const EnvService = {
+      parse(text) {
+        const env = {};
+        const lines = text.split(/\r?\n/);
+        for (let line of lines) {
+          line = line.trim();
+          if (!line || line.startsWith('#')) continue;
+          const eqIdx = line.indexOf('=');
+          if (eqIdx === -1) continue;
+          const key = line.slice(0, eqIdx).trim();
+          let val = line.slice(eqIdx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          } else {
+            const commentIdx = val.indexOf(' #');
+            if (commentIdx !== -1) {
+              val = val.slice(0, commentIdx).trim();
+            }
+          }
+          env[key] = val;
+        }
+        return env;
+      },
+
+      stringify(env) {
+        let out = `# Cloudflare Worker 密钥与环境变量配置 (.dev.vars / .env)\n`;
+        out += `# 本地开发 (wrangler dev) 自动读取；生产环境通过 \`npx wrangler secret put KEY_NAME\` 写入\n\n`;
+
+        if (env.routesKey) {
+          out += `# 1. 统一路由对称加密密钥与访问主密码 (ROUTES_KEY)\nROUTES_KEY=${env.routesKey}\n\n`;
+        } else {
+          out += `# ROUTES_KEY=your_encryption_key_here\n\n`;
+        }
+
+        if (env.authPassword) {
+          out += `# 2. 独立访客访问主密码 (AUTH_PASSWORD，留空默认复用 ROUTES_KEY)\nAUTH_PASSWORD=${env.authPassword}\n\n`;
+        }
+
+        if (env.challengeProvider) {
+          out += `# 3. 人机验证与防爬防护配置 (Turnstile / Altcha / Cap)\nCHALLENGE_PROVIDER=${env.challengeProvider}\n`;
+          if (env.challengeProvider === 'turnstile') {
+            if (env.turnstileSiteKey) out += `TURNSTILE_SITE_KEY=${env.turnstileSiteKey}\n`;
+            if (env.turnstileSecretKey) out += `TURNSTILE_SECRET_KEY=${env.turnstileSecretKey}\n`;
+          } else if (env.challengeProvider === 'altcha') {
+            if (env.altchaHmacKey) {
+              out += `ALTCHA_HMAC_KEY=${env.altchaHmacKey}\n`;
+            } else {
+              out += `# ALTCHA_HMAC_KEY 留空时自动复用 ROUTES_KEY\n`;
+            }
+          } else if (env.challengeProvider === 'cap') {
+            if (env.capSiteKey) out += `CAP_SITE_KEY=${env.capSiteKey}\n`;
+            if (env.capSecretKey) {
+              out += `CAP_SECRET_KEY=${env.capSecretKey}\n`;
+            } else {
+              out += `# CAP_SECRET_KEY 留空时自动复用 ROUTES_KEY\n`;
+            }
+            if (env.capEndpoint) {
+              out += `CAP_ENDPOINT=${env.capEndpoint}\n`;
+            } else {
+              out += `# CAP_ENDPOINT 留空自动启用 Worker 内置无状态引擎 (零服务器/零运维)\n# 若对接外部自建 Docker 实例，解除注释即可：\n# CAP_ENDPOINT=https://cap.yourdomain.com\n`;
+            }
+          }
+          out += '\n';
+        }
+
+        return out;
+      }
+    };
+
+    // =============================================================
+    // 4. FileService (深模块：统一浏览器文件读取与直接写回/下载)
+    // =============================================================
+    const FileService = {
+      downloadBlob(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      },
+
+      async readFile(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = () => reject(new Error('无法读取选定的本地文件'));
+          reader.readAsText(file);
+        });
+      },
+
+      async writeToFileHandle(handle, content) {
+        if (handle.queryPermission) {
+          const perm = await handle.queryPermission({ mode: 'readwrite' });
+          if (perm !== 'granted') {
+            const reqPerm = await handle.requestPermission({ mode: 'readwrite' });
+            if (reqPerm !== 'granted') {
+              throw new Error('未获得对本地文件的写回权限');
+            }
+          }
+        }
+        const writable = await handle.createWritable();
+        await writable.write(content);
+        await writable.close();
+      }
+    };
+
+    // =============================================================
+    // 4. ConfigCodec (深模块：TypeScript 配置生成与解析)
+    // =============================================================
+    const ConfigCodec = {
+      serializeTsLiteral(val, indentLevel = 2) {
+        const indent = ' '.repeat(indentLevel);
+        const childIndent = ' '.repeat(indentLevel + 2);
+
+        if (val === null || val === undefined) return 'undefined';
+        if (typeof val === 'boolean' || typeof val === 'number') return String(val);
+        if (typeof val === 'string') {
+          return "'" + val.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n') + "'";
+        }
+        if (Array.isArray(val)) {
+          if (val.length === 0) return '[]';
+          const items = val.map(item => childIndent + this.serializeTsLiteral(item, indentLevel + 2)).join(',\n');
+          return `[\n${items}\n${indent}]`;
+        }
+        if (typeof val === 'object') {
+          const entries = Object.entries(val);
+          if (entries.length === 0) return '{}';
+          const lines = entries.map(([k, v]) => {
+            const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k)
+              ? k
+              : `'${k.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+            return `${childIndent}${safeKey}: ${this.serializeTsLiteral(v, indentLevel + 2)},`;
+          });
+          return `{\n${lines.join('\n')}\n${indent}}`;
+        }
+        return String(val);
+      },
+
+      async generateTypeScriptCode(state) {
+        const encKey = state.settings.encryptionKey;
+        const encryptAll = !!state.settings.encryptAllRoutes;
+        const utmSource = (state.settings.defaultUtm?.utm_source || '').trim();
+        const utmMedium = (state.settings.defaultUtm?.utm_medium || '').trim();
+        let utmSnippet = '';
+        if (utmSource || utmMedium) {
+          utmSnippet = `\n    defaultUtm: {` +
+            (utmSource ? `\n      utm_source: '${utmSource}',` : '') +
+            (utmMedium ? `\n      utm_medium: '${utmMedium}',` : '') +
+            `\n    },`;
+        }
+
+        let challengeSnippet = '';
+        if (state.settings.challenge && state.settings.challenge.provider) {
+          const ch = state.settings.challenge;
+          challengeSnippet = `\n    challenge: {` +
+            `\n      provider: '${ch.provider}',` +
+            (ch.siteKey ? `\n      siteKey: '${ch.siteKey}',` : '') +
+            (ch.clearanceDuration ? `\n      clearanceDuration: ${ch.clearanceDuration},` : '') +
+            (ch.capEndpoint ? `\n      capEndpoint: '${ch.capEndpoint}',` : '') +
+            `\n    },`;
+        }
+
+        if (encryptAll && encKey) {
+          const encryptedPayload = await CryptoService.encryptData(state.links, encKey);
+          const rootTarget = typeof state.links['/'] === 'string' ? state.links['/'] : (state.links['/']?.target || 'https://' + state.settings.domain);
+
+          return `/**
+ * Short Link Configuration Table.
+ * Generated via admin.html
+ * ENC ENABLED
+ *
+ * NOTE: Symmetrically encrypted for public repo security!
+ * Set environment variable ROUTES_KEY in Cloudflare Worker dashboard.
+ */
+
+import { ShortLinkConfig } from '../types';
+
+export const config: ShortLinkConfig = {
+  settings: {
+    domain: ${this.serializeTsLiteral(state.settings.domain || '')},
+    ${state.settings.salt ? `salt: ${this.serializeTsLiteral(state.settings.salt)},\n    ` : ''}notFoundUrl: ${this.serializeTsLiteral(state.settings.notFoundUrl || '')},
+    notFoundMode: ${this.serializeTsLiteral(state.settings.notFoundMode || 'redirect')},${utmSnippet}${challengeSnippet}
+  },
+
+  // 自身访问时的公开重定向
+  links: {
+    '/': ${this.serializeTsLiteral(rootTarget)},
+  },
+
+  // 对称加密短链数据（AES-GCM-256 + HKDF，线上由 ROUTES_KEY 环境变量自动解密）
+  encrypted: '${encryptedPayload}',
+};
+`;
+        }
+
+        const linksTs = this.serializeTsLiteral(state.links, 2);
+        return `/**
+ * Short Link Configuration Table.
+ * Generated via admin.html
+ */
+
+import { ShortLinkConfig } from '../types';
+
+export const config: ShortLinkConfig = {
+  settings: {
+    domain: ${this.serializeTsLiteral(state.settings.domain || '')},
+    ${state.settings.salt ? `salt: ${this.serializeTsLiteral(state.settings.salt)},\n    ` : ''}notFoundUrl: ${this.serializeTsLiteral(state.settings.notFoundUrl || '')},
+    notFoundMode: ${this.serializeTsLiteral(state.settings.notFoundMode || 'redirect')},${utmSnippet}${challengeSnippet}
+  },
+
+  links: ${linksTs},
+};
+`;
+      },
+
+      stripComments(code) {
+        let inString = null;
+        let inSingleLineComment = false;
+        let inMultiLineComment = false;
+        let result = '';
+
+        for (let i = 0; i < code.length; i++) {
+          const ch = code[i];
+          const next = code[i + 1];
+
+          if (inSingleLineComment) {
+            if (ch === '\n') {
+              inSingleLineComment = false;
+              result += ch;
+            }
+            continue;
+          }
+
+          if (inMultiLineComment) {
+            if (ch === '*' && next === '/') {
+              inMultiLineComment = false;
+              i++;
+            }
+            continue;
+          }
+
+          if (inString) {
+            result += ch;
+            if (ch === '\\') {
+              result += next;
+              i++;
+            } else if (ch === inString) {
+              inString = null;
+            }
+            continue;
+          }
+
+          if (ch === '/' && next === '/') {
+            inSingleLineComment = true;
+            i++;
+            continue;
+          }
+          if (ch === '/' && next === '*') {
+            inMultiLineComment = true;
+            i++;
+            continue;
+          }
+
+          if (ch === "'" || ch === '"' || ch === '`') {
+            inString = ch;
+            result += ch;
+            continue;
+          }
+
+          result += ch;
+        }
+
+        return result;
+      },
+
+      async parseConfigFile(rawText, promptKeyFn) {
+        let objStr = '';
+        const configIdx = rawText.indexOf('config');
+        if (configIdx !== -1) {
+          const start = rawText.indexOf('{', configIdx);
+          const end = rawText.lastIndexOf('}');
+          if (start !== -1 && end > start) {
+            objStr = rawText.slice(start, end + 1);
+          }
+        }
+
+        if (!objStr) {
+          const start = rawText.indexOf('{');
+          const end = rawText.lastIndexOf('}');
+          if (start !== -1 && end > start) {
+            objStr = rawText.slice(start, end + 1);
+          }
+        }
+
+        if (!objStr) {
+          throw new Error('未能从文本中定位配置对象字面量 { ... }');
+        }
+
+        let clean = this.stripComments(objStr);
+
+        // 规范化字符串字面量为合法 JSON 格式
+        clean = clean.replace(/'((?:\\.|[^'])*)'/g, (_, content) => {
+          return '"' + content
+            .replace(/"/g, '\\"')
+            .replace(/\\'/g, "'")
+            .replace(/\r/g, '\\r')
+            .replace(/\n/g, '\\n') + '"';
+        });
+
+        clean = clean.replace(/`((?:\\.|[^`])*)`/g, (_, content) => {
+          return '"' + content
+            .replace(/"/g, '\\"')
+            .replace(/\\`/g, '`')
+            .replace(/\r/g, '\\r')
+            .replace(/\n/g, '\\n') + '"';
+        });
+
+        clean = clean.replace(/([{,]\s*)([a-zA-Z0-9_$]+)\s*:/g, '$1"$2":');
+        clean = clean.replace(/,\s*([}\]])/g, '$1');
+
+        let parsed;
+        try {
+          parsed = JSON.parse(clean);
+        } catch (jsonErr) {
+          throw new Error('解析配置语法失败: ' + jsonErr.message);
+        }
+
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error('解析出的配置对象无效');
+        }
+
+        let hasEncrypted = !!(parsed.encrypted && typeof parsed.encrypted === 'string');
+        if (!hasEncrypted && parsed.links) {
+          for (const val of Object.values(parsed.links)) {
+            const target = typeof val === 'string' ? val : (val && val.target);
+            if (typeof target === 'string' && target.startsWith('aes-gcm:')) {
+              hasEncrypted = true;
+              break;
+            }
+          }
+        }
+
+        let decryptedLinks = {};
+        let enteredKey = '';
+
+        if (hasEncrypted) {
+          enteredKey = await promptKeyFn();
+          if (enteredKey) {
+            if (parsed.encrypted) {
+              decryptedLinks = await CryptoService.decryptData(parsed.encrypted, enteredKey);
+            }
+            if (parsed.links) {
+              for (const [k, v] of Object.entries(parsed.links)) {
+                if (typeof v === 'string' && v.startsWith('aes-gcm:')) {
+                  try { parsed.links[k] = await CryptoService.decryptData(v, enteredKey); } catch (_) {}
+                } else if (v && typeof v.target === 'string' && v.target.startsWith('aes-gcm:')) {
+                  try { v.target = await CryptoService.decryptData(v.target, enteredKey); } catch (_) {}
+                }
+              }
+            }
+          }
+        }
+
+        const settings = {
+          domain: parsed.settings?.domain || '',
+          salt: parsed.settings?.salt || '',
+          encryptionKey: enteredKey || '',
+          encryptAllRoutes: !!(parsed.encrypted && typeof parsed.encrypted === 'string'),
+          notFoundUrl: parsed.settings?.notFoundUrl || 'https://stevezmt.top/404?from=${FULL_URL}',
+          notFoundMode: parsed.settings?.notFoundMode || 'redirect',
+          defaultUtm: { ...(parsed.settings?.defaultUtm || { utm_source: 'shortlink', utm_medium: 'redirect' }) },
+          challenge: {
+            provider: parsed.settings?.challenge?.provider || '',
+            siteKey: parsed.settings?.challenge?.siteKey || '',
+            clearanceDuration: Number(parsed.settings?.challenge?.clearanceDuration) || 0,
+            capEndpoint: parsed.settings?.challenge?.capEndpoint || '',
+          }
+        };
+
+        const links = {
+          ...(parsed.links || {}),
+          ...decryptedLinks,
+        };
+
+        return { settings, links };
+      }
+    };
+
+    // =============================================================
+    // 5. UI Controller & Event Handlers
+    // =============================================================
 
     function getActiveSalt() {
       const explicitSalt = document.getElementById('cfgSalt').value.trim();
@@ -856,7 +1646,7 @@ export const config: ShortLinkConfig = {
 
       box.style.display = 'block';
       document.getElementById('currentSaltLabel').textContent = 'Salt: ' + salt;
-      const hex = await computeSaltedHash(pwd, salt);
+      const hex = await CryptoService.computeSaltedHash(pwd, salt);
       document.getElementById('hashValPreview').textContent = 'sha256:' + hex;
     }
 
@@ -896,6 +1686,22 @@ export const config: ShortLinkConfig = {
       }
     }
 
+    function syncChallengeControls() {
+      const provider = document.getElementById('cfgChallengeProvider') ? document.getElementById('cfgChallengeProvider').value : '';
+      const turnstileGroup = document.getElementById('cfgTurnstileGroup');
+      const altchaGroup = document.getElementById('cfgAltchaGroup');
+      const capGroup = document.getElementById('cfgCapGroup');
+
+      if (turnstileGroup) turnstileGroup.style.display = provider === 'turnstile' ? 'block' : 'none';
+      if (altchaGroup) altchaGroup.style.display = provider === 'altcha' ? 'block' : 'none';
+      if (capGroup) capGroup.style.display = provider === 'cap' ? 'block' : 'none';
+    }
+
+    function onChallengeProviderChange() {
+      syncChallengeControls();
+      onSettingsChange();
+    }
+
     function onSettingsChange() {
       state.settings.domain = document.getElementById('cfgDomain').value.trim();
       state.settings.salt = document.getElementById('cfgSalt').value.trim();
@@ -904,6 +1710,29 @@ export const config: ShortLinkConfig = {
       state.settings.notFoundUrl = document.getElementById('cfg404').value.trim();
       state.settings.defaultUtm.utm_source = document.getElementById('cfgUtmSource').value.trim();
       state.settings.defaultUtm.utm_medium = document.getElementById('cfgUtmMedium').value.trim();
+
+      // 同步 env 密钥配置项
+      state.env.routesKey = state.settings.encryptionKey;
+      state.env.authPassword = document.getElementById('cfgAuthPassword') ? document.getElementById('cfgAuthPassword').value.trim() : '';
+      state.env.challengeProvider = document.getElementById('cfgChallengeProvider') ? document.getElementById('cfgChallengeProvider').value : '';
+      state.env.turnstileSiteKey = document.getElementById('cfgTurnstileSiteKey') ? document.getElementById('cfgTurnstileSiteKey').value.trim() : '';
+      state.env.turnstileSecretKey = document.getElementById('cfgTurnstileSecretKey') ? document.getElementById('cfgTurnstileSecretKey').value.trim() : '';
+      state.env.altchaHmacKey = document.getElementById('cfgAltchaHmacKey') ? document.getElementById('cfgAltchaHmacKey').value.trim() : '';
+      state.env.capSiteKey = document.getElementById('cfgCapSiteKey') ? document.getElementById('cfgCapSiteKey').value.trim() : '';
+      state.env.capSecretKey = document.getElementById('cfgCapSecretKey') ? document.getElementById('cfgCapSecretKey').value.trim() : '';
+      state.env.capEndpoint = document.getElementById('cfgCapEndpoint') ? document.getElementById('cfgCapEndpoint').value.trim() : '';
+
+      // routes.ts 仅保留安全公开属性（不泄露任何私钥）
+      let publicSiteKey = '';
+      if (state.env.challengeProvider === 'turnstile') publicSiteKey = state.env.turnstileSiteKey;
+      else if (state.env.challengeProvider === 'cap') publicSiteKey = state.env.capSiteKey;
+
+      state.settings.challenge = {
+        provider: state.env.challengeProvider,
+        siteKey: publicSiteKey,
+        clearanceDuration: document.getElementById('cfgClearanceDuration') ? parseInt(document.getElementById('cfgClearanceDuration').value, 10) || 0 : 0,
+        capEndpoint: state.env.challengeProvider === 'cap' ? state.env.capEndpoint : '',
+      };
 
       syncEncryptionControls();
 
@@ -915,13 +1744,52 @@ export const config: ShortLinkConfig = {
       renderAll();
     }
 
-    function togglePasswordMode() {
-      const useUnified = document.getElementById('linkUseUnifiedPass').checked;
-      document.getElementById('unifiedPassTip').style.display = useUnified ? 'flex' : 'none';
-      document.getElementById('customPassGroup').style.display = useUnified ? 'none' : 'block';
-      if (useUnified) {
-        document.getElementById('linkPassword').value = '';
-        document.getElementById('hashPreviewBox').style.display = 'none';
+    // =============================================================
+    // 密钥随机生成工具函数 (Altcha & Cap)
+    // =============================================================
+
+    function generateRandomHex(byteLength = 32) {
+      const bytes = new Uint8Array(byteLength);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function generateRandomUuid() {
+      if (typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
+        (+c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> +c / 4).toString(16)
+      );
+    }
+
+    function generateAltchaKey() {
+      const key = generateRandomHex(32); // 64 字符高强度 Hex 串
+      const el = document.getElementById('cfgAltchaHmacKey');
+      if (el) {
+        el.value = key;
+        onSettingsChange();
+        showToast('已生成 Altcha HMAC 随机私钥！');
+      }
+    }
+
+    function generateCapSiteKey() {
+      const uuid = generateRandomUuid();
+      const el = document.getElementById('cfgCapSiteKey');
+      if (el) {
+        el.value = uuid;
+        onSettingsChange();
+        showToast('已生成 Cap 站点公钥 (UUID)！');
+      }
+    }
+
+    function generateCapSecretKey() {
+      const key = generateRandomHex(32); // 64 字符高强度 Hex 串
+      const el = document.getElementById('cfgCapSecretKey');
+      if (el) {
+        el.value = key;
+        onSettingsChange();
+        showToast('已生成 Cap 服务端随机私钥！');
       }
     }
 
@@ -947,25 +1815,26 @@ export const config: ShortLinkConfig = {
         }
         state.settings.encryptionKey = encKey;
         document.getElementById('cfgEncryptionKey').value = encKey;
-        target = await encryptData(target, encKey);
+        target = await CryptoService.encryptData(target, encKey);
       }
 
-      if (!customPassword && !minTls && !blockBots && !mobile) {
+      const challengeVal = document.getElementById('linkChallenge').value;
+      let challenge = undefined;
+      if (challengeVal === 'false') challenge = false;
+      else if (challengeVal === 'true') challenge = true;
+      else if (challengeVal) challenge = challengeVal;
+
+      if (!customPassword && !minTls && !blockBots && !mobile && challenge === undefined) {
         state.links[path] = target;
       } else {
         const item = { target };
         if (customPassword) {
-          if (customPassword.startsWith('sha256:')) {
-            item.password = customPassword;
-          } else {
-            const salt = getActiveSalt();
-            const hash = await computeSaltedHash(customPassword, salt);
-            item.password = 'sha256:' + hash;
-          }
+          item.password = await CryptoService.hashPassword(customPassword, getActiveSalt());
         }
         if (minTls) item.minTls = minTls;
         if (blockBots) item.blockBots = true;
         if (mobile) item.mobile = mobile;
+        if (challenge !== undefined) item.challenge = challenge;
         state.links[path] = item;
       }
 
@@ -976,6 +1845,7 @@ export const config: ShortLinkConfig = {
       document.getElementById('linkMinTls').value = '';
       document.getElementById('linkBlockBots').value = 'false';
       document.getElementById('linkMobile').value = '';
+      document.getElementById('linkChallenge').value = '';
       document.getElementById('hashPreviewBox').style.display = 'none';
 
       syncEncryptionControls();
@@ -1009,7 +1879,7 @@ export const config: ShortLinkConfig = {
         }
         if (key) {
           try {
-            rawTarget = await decryptData(rawTarget, key);
+            rawTarget = await CryptoService.decryptData(rawTarget, key);
             showToast('已解密目标网址，便于编辑');
           } catch (_) {
             alert('解密失败：ROUTES_KEY 不正确，保持密文显示。');
@@ -1026,181 +1896,478 @@ export const config: ShortLinkConfig = {
         document.getElementById('linkMinTls').value = '';
         document.getElementById('linkBlockBots').value = 'false';
         document.getElementById('linkMobile').value = '';
+        document.getElementById('linkChallenge').value = '';
       } else {
         document.getElementById('linkPassword').value = val.password || '';
         document.getElementById('linkMinTls').value = val.minTls || '';
         document.getElementById('linkBlockBots').value = val.blockBots ? 'true' : 'false';
         document.getElementById('linkMobile').value = val.mobile || '';
+        document.getElementById('linkChallenge').value = val.challenge !== undefined ? String(val.challenge) : '';
       }
       updateHashPreview();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    function renderTable() {
-      const tbody = document.getElementById('routesTableBody');
-      tbody.innerHTML = '';
-      const entries = Object.entries(state.links);
-      document.getElementById('routeCount').textContent = entries.length;
+    // =============================================================
+    // 6. CSV 导入与导出控制器 (严格明文保证)
+    // =============================================================
 
-      for (const [path, val] of entries) {
-        const tr = document.createElement('tr');
-        const isString = typeof val === 'string';
-        const target = isString ? val : val.target;
-        const isTargetEncrypted = typeof target === 'string' && target.startsWith('aes-gcm:');
+    function openCsvSelector() {
+      document.getElementById('csvPicker').click();
+    }
 
-        let badges = '';
-        if (path === '/') {
-          badges += '<span class="badge badge-success"><i class="mdui-icon material-icons" style="font-size:12px;">home</i> 根路径直达</span>';
-        } else if (path.startsWith('regex:')) {
-          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">code</i> 正则匹配</span>';
-        } else if (path.includes('/:')) {
-          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">tune</i> 动态参数 (:slug)</span>';
-        } else if (path.includes(':')) {
-          badges += '<span class="badge badge-accent"><i class="mdui-icon material-icons" style="font-size:12px;">language</i> 自定义子域名</span>';
-        }
-
-        if (isTargetEncrypted) {
-          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">enhanced_encryption</i> 密文存储 (防转储)</span>';
-        }
-
-        if (!isString) {
-          if (val.password) {
-            badges += '<span class="badge badge-warning"><i class="mdui-icon material-icons" style="font-size:12px;">lock</i> 密码保护 (不缓存)</span>';
-          }
-          if (val.minTls) {
-            badges += `<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">security</i> TLS ${val.minTls}+</span>`;
-          }
-          if (val.blockBots) {
-            badges += '<span class="badge badge-danger"><i class="mdui-icon material-icons" style="font-size:12px;">block</i> 拦截爬虫</span>';
-          }
-          if (val.mobile) {
-            badges += '<span class="badge badge-success"><i class="mdui-icon material-icons" style="font-size:12px;">phone_iphone</i> 手机独立跳转</span>';
-          }
-        }
-
-        const safePath = escapeHtml(path);
-        const safeTarget = escapeHtml(typeof target === 'string' ? target : JSON.stringify(target));
-        const jsEscapedPath = path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-
-        tr.innerHTML = `
-          <td><strong class="mono" style="color: #38bdf8;">${safePath}</strong></td>
-          <td><a href="${safeTarget}" target="_blank" rel="noopener noreferrer" style="color: #94a3b8; text-decoration: none;">${safeTarget}</a></td>
-          <td>${badges || '<span style="color: #64748b; font-size: 0.8rem;">基础跳转</span>'}</td>
-          <td style="text-align: right;">
-            <button class="btn btn-sm" onclick="editLink('${jsEscapedPath}')">
-              <i class="mdui-icon material-icons" style="font-size:15px;">edit</i>
-            </button>
-            <button class="btn btn-danger btn-sm" onclick="deleteLink('${jsEscapedPath}')">
-              <i class="mdui-icon material-icons" style="font-size:15px;">delete</i>
-            </button>
-          </td>
-        `;
-        tbody.appendChild(tr);
+    async function onCsvFileSelected(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await FileService.readFile(file);
+        await importCsvText(text, file.name);
+      } catch (err) {
+        alert('读取 CSV 文件失败: ' + err.message);
+      } finally {
+        e.target.value = '';
       }
     }
 
-    /**
-     * 将 JavaScript 对象序列化为合法的 TypeScript 对象字面量代码。
-     * 正确处理字符串转义（单引号、反斜杠、换行符），杜绝破坏性文本替换导致 TS 语法错误。
-     */
-    function serializeTsLiteral(val, indentLevel = 2) {
-      const indent = ' '.repeat(indentLevel);
-      const childIndent = ' '.repeat(indentLevel + 2);
+    async function importCsvText(text, sourceName = 'CSV') {
+      const salt = getActiveSalt();
+      const result = await CsvService.parse(text, salt);
+      if (!result.count) {
+        alert('未能从文件中解析出有效的短链接规则，请确认第一列为访问路径、第二列为跳转目标。');
+        return;
+      }
 
-      if (val === null || val === undefined) return 'undefined';
-      if (typeof val === 'boolean' || typeof val === 'number') return String(val);
-      if (typeof val === 'string') {
-        return "'" + val.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n') + "'";
+      const existingCount = Object.keys(state.links).length;
+      let shouldMerge = true;
+      if (existingCount > 1 || (existingCount === 1 && !state.links['/'])) {
+        shouldMerge = confirm(`已从 ${sourceName} 成功识别 ${result.count} 条短链接规则！\n\n点击【确定】合并追加到当前列表（同名路径将被覆盖更新）；\n点击【取消】清空当前列表，仅保留导入的这 ${result.count} 条规则。`);
       }
-      if (Array.isArray(val)) {
-        if (val.length === 0) return '[]';
-        const items = val.map(item => childIndent + serializeTsLiteral(item, indentLevel + 2)).join(',\n');
-        return `[\n${items}\n${indent}]`;
+
+      if (shouldMerge) {
+        state.links = { ...state.links, ...result.links };
+      } else {
+        state.links = { ...result.links };
       }
-      if (typeof val === 'object') {
-        const entries = Object.entries(val);
-        if (entries.length === 0) return '{}';
-        const lines = entries.map(([k, v]) => {
-          const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k)
-            ? k
-            : `'${k.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
-          return `${childIndent}${safeKey}: ${serializeTsLiteral(v, indentLevel + 2)},`;
-        });
-        return `{\n${lines.join('\n')}\n${indent}}`;
-      }
-      return String(val);
+
+      renderAll();
+      showToast(`成功导入 ${result.count} 条短链接规则！`);
     }
 
-    async function generateTypeScriptCodeAsync() {
-      const encKey = state.settings.encryptionKey;
-      const encryptAll = !!state.settings.encryptAllRoutes;
-      const utmSource = (state.settings.defaultUtm?.utm_source || '').trim();
-      const utmMedium = (state.settings.defaultUtm?.utm_medium || '').trim();
-      let utmSnippet = '';
-      if (utmSource || utmMedium) {
-        utmSnippet = `\n    defaultUtm: {` +
-          (utmSource ? `\n      utm_source: '${utmSource}',` : '') +
-          (utmMedium ? `\n      utm_medium: '${utmMedium}',` : '') +
-          `\n    },`;
+    async function exportCsvFile() {
+      // 1. 检查是否存在密文目标
+      let hasCiphertext = false;
+      for (const val of Object.values(state.links)) {
+        const target = typeof val === 'string' ? val : (val && val.target);
+        const mobile = val && typeof val === 'object' ? val.mobile : '';
+        if ((typeof target === 'string' && target.startsWith('aes-gcm:')) ||
+            (typeof mobile === 'string' && mobile.startsWith('aes-gcm:'))) {
+          hasCiphertext = true;
+          break;
+        }
       }
 
-      if (encryptAll && encKey) {
-        // 对称加密全部 links（除公开的根路径 / 以外，全部整体打包加密）
-        const encryptedPayload = await encryptData(state.links, encKey);
-        const rootTarget = typeof state.links['/'] === 'string' ? state.links['/'] : (state.links['/']?.target || 'https://' + state.settings.domain);
+      let key = state.settings.encryptionKey || (document.getElementById('cfgEncryptionKey') ? document.getElementById('cfgEncryptionKey').value.trim() : '');
 
-        return `/**
- * Short Link Configuration Table.
- * Generated via admin.html
- * ENC ENABLED
- *
- * NOTE: Symmetrically encrypted for public repo security!
- * Set environment variable ROUTES_KEY in Cloudflare Worker dashboard.
- */
-
-import { ShortLinkConfig } from '../types';
-
-export const config: ShortLinkConfig = {
-  settings: {
-    domain: ${serializeTsLiteral(state.settings.domain || '')},
-    ${state.settings.salt ? `salt: ${serializeTsLiteral(state.settings.salt)},\n    ` : ''}notFoundUrl: ${serializeTsLiteral(state.settings.notFoundUrl || '')},
-    notFoundMode: ${serializeTsLiteral(state.settings.notFoundMode || 'redirect')},${utmSnippet}
-  },
-
-  // 自身访问时的公开重定向
-  links: {
-    '/': ${serializeTsLiteral(rootTarget)},
-  },
-
-  // 对称加密短链数据（AES-GCM-256 + HKDF，线上由 ROUTES_KEY 环境变量自动解密）
-  encrypted: '${encryptedPayload}',
-};
-`;
+      if (hasCiphertext && !key) {
+        key = prompt('导出 CSV 必须为明文，检测到存在密文目标！\n请输入保存在 .env 中的 ROUTES_KEY 密钥以解密：');
+        if (key) {
+          key = key.trim();
+          state.settings.encryptionKey = key;
+          if (document.getElementById('cfgEncryptionKey')) {
+            document.getElementById('cfgEncryptionKey').value = key;
+          }
+        } else {
+          alert('未提供解密密钥，已取消导出（导出的 CSV 必须为明文）。');
+          return;
+        }
       }
 
-      // 明文安全导出（通过类型安全的字面量序列化器，避免字符串中单引号引起语法报错）
-      const linksTs = serializeTsLiteral(state.links, 2);
+      const decryptFn = async (ciphertext) => {
+        try {
+          return await CryptoService.decryptData(ciphertext, key);
+        } catch (_) {
+          throw new Error('密钥错误，无法解密目标: ' + ciphertext.slice(0, 24) + '...');
+        }
+      };
 
-      return `/**
- * Short Link Configuration Table.
- * Generated via admin.html
-  */
-
-import { ShortLinkConfig } from '../types';
-
-export const config: ShortLinkConfig = {
-  settings: {
-    domain: ${serializeTsLiteral(state.settings.domain || '')},
-    ${state.settings.salt ? `salt: ${serializeTsLiteral(state.settings.salt)},\n    ` : ''}notFoundUrl: ${serializeTsLiteral(state.settings.notFoundUrl || '')},
-    notFoundMode: ${serializeTsLiteral(state.settings.notFoundMode || 'redirect')},${utmSnippet}
-  },
-
-  links: ${linksTs},
-};
-`;
+      try {
+        const csvContent = await CsvService.exportPlaintext(state.links, decryptFn);
+        FileService.downloadBlob(csvContent, 'routes.csv', 'text/csv;charset=utf-8');
+        showToast('已成功导出 100% 明文 CSV 文件！');
+      } catch (err) {
+        alert('导出 CSV 失败: ' + err.message);
+      }
     }
 
-    // 行级 LCS Diff 算法
+    // =============================================================
+    // 7. 配置载入、写回与 Diff 视图
+    // =============================================================
+
+    function getConfigFolderPath() {
+      try {
+        let path = decodeURIComponent(location.pathname);
+        if (path.startsWith('/') && path.charAt(2) === ':') {
+          path = path.slice(1);
+        }
+        const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        const dir = lastSlash !== -1 ? path.slice(0, lastSlash) : path;
+        const isWindows = path.includes(':') || navigator.userAgent.includes('Windows');
+        if (isWindows) {
+          return (dir + '/src/config').replace(/\//g, '\\');
+        }
+        return dir + '/src/config';
+      } catch (_) {
+        return 'src/config';
+      }
+    }
+
+    async function loadConfigFileFromText(rawText) {
+      try {
+        const promptKeyFn = async () => {
+          const key = prompt('检测到配置文件中包含密文保护内容！\n请输入保存在 .env 中的 ROUTES_KEY 统一密钥进行解密：');
+          return key ? key.trim() : '';
+        };
+
+        const result = await ConfigCodec.parseConfigFile(rawText, promptKeyFn);
+        baselineSourceCode = rawText;
+
+        state.settings = result.settings;
+        state.links = result.links;
+
+        // 同步到 UI 控件
+        document.getElementById('cfgDomain').value = state.settings.domain;
+        document.getElementById('cfgSalt').value = state.settings.salt || '';
+        document.getElementById('cfgEncryptionKey').value = state.settings.encryptionKey || '';
+        document.getElementById('cfg404').value = state.settings.notFoundUrl;
+        document.getElementById('cfgUtmSource').value = state.settings.defaultUtm?.utm_source || '';
+        document.getElementById('cfgUtmMedium').value = state.settings.defaultUtm?.utm_medium || '';
+        
+        const chProvider = state.settings.challenge?.provider || '';
+        document.getElementById('cfgChallengeProvider').value = chProvider;
+        document.getElementById('cfgClearanceDuration').value = state.settings.challenge?.clearanceDuration || 0;
+        
+        if (chProvider === 'turnstile') {
+          document.getElementById('cfgTurnstileSiteKey').value = state.settings.challenge?.siteKey || '';
+        } else if (chProvider === 'cap') {
+          document.getElementById('cfgCapSiteKey').value = state.settings.challenge?.siteKey || '';
+          document.getElementById('cfgCapEndpoint').value = state.settings.challenge?.capEndpoint || '';
+        }
+
+        // 同步内部 env 状态
+        state.env.routesKey = state.settings.encryptionKey || '';
+        state.env.challengeProvider = chProvider;
+        if (chProvider === 'turnstile') {
+          state.env.turnstileSiteKey = state.settings.challenge?.siteKey || '';
+        } else if (chProvider === 'cap') {
+          state.env.capSiteKey = state.settings.challenge?.siteKey || '';
+          state.env.capEndpoint = state.settings.challenge?.capEndpoint || '';
+        }
+
+        const encryptAllCheckbox = document.getElementById('cfgEncryptAllRoutes');
+        if (encryptAllCheckbox) encryptAllCheckbox.checked = state.settings.encryptAllRoutes;
+
+        syncEncryptionControls();
+        syncChallengeControls();
+        renderAll();
+        showToast('已成功读取并载入配置');
+      } catch (err) {
+        alert('读取解析配置文件失败: ' + err.message);
+      }
+    }
+
+    async function openFileSelector() {
+      const configPath = getConfigFolderPath();
+      try {
+        await navigator.clipboard.writeText(configPath);
+        showToast(`已复制路径：${configPath} (可直接在文件弹窗地址栏粘贴)`);
+      } catch (_) {}
+
+      if ('showOpenFilePicker' in window) {
+        try {
+          const [fileHandle] = await window.showOpenFilePicker({
+            types: [
+              {
+                description: 'TypeScript/JavaScript Config',
+                accept: { 'text/plain': ['.ts', '.js', '.json'], 'text/typescript': ['.ts'] }
+              }
+            ]
+          });
+          currentFileHandle = fileHandle;
+          const file = await fileHandle.getFile();
+          const text = await file.text();
+          updateSaveButtonState();
+          await loadConfigFileFromText(text);
+          return;
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+        }
+      }
+      document.getElementById('filePicker').click();
+    }
+
+    async function onFileSelected(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      currentFileHandle = null;
+      document.getElementById('baselineSourceName').textContent = file.name;
+      updateSaveButtonState();
+      try {
+        const text = await FileService.readFile(file);
+        await loadConfigFileFromText(text);
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        e.target.value = '';
+      }
+    }
+
+    async function revertToBaseline() {
+      if (confirm('确认放弃当前所有未保存的修改，还原为基准配置吗？')) {
+        await loadConfigFileFromText(baselineSourceCode);
+        showToast('已还原为原配置');
+      }
+    }
+
+    async function checkEncryptionKeyPromptAsync() {
+      if (state.settings.encryptAllRoutes && !state.settings.encryptionKey) {
+        const key = prompt('当前已开启“加密路由”，请输入用于加密全表的统一密钥 (ROUTES_KEY)：');
+        if (key && key.trim()) {
+          state.settings.encryptionKey = key.trim();
+          document.getElementById('cfgEncryptionKey').value = key.trim();
+          renderAll();
+        } else {
+          showToast('未输入密钥，将按未加密的明文表生成配置');
+        }
+      }
+    }
+
+    async function exportTypeScript() {
+      await checkEncryptionKeyPromptAsync();
+      const code = await ConfigCodec.generateTypeScriptCode(state);
+      navigator.clipboard.writeText(code).then(() => {
+        showToast('已复制 routes.ts 到剪贴板');
+      });
+    }
+
+    async function saveConfigFile() {
+      await checkEncryptionKeyPromptAsync();
+      const code = await ConfigCodec.generateTypeScriptCode(state);
+
+      if (currentFileHandle) {
+        try {
+          await FileService.writeToFileHandle(currentFileHandle, code);
+          baselineSourceCode = code;
+          renderDiff();
+          showToast(`已直接修改并写回本地文件：${currentFileHandle.name}`);
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+          console.warn('直接写回本地文件失败，尝试调起另存:', err);
+          showToast('直接写回权限受限，正在调起另存弹窗...');
+        }
+      }
+
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: 'routes.ts',
+            types: [
+              {
+                description: 'TypeScript Route Configuration',
+                accept: { 'text/typescript': ['.ts'], 'text/plain': ['.ts'] }
+              }
+            ]
+          });
+          await FileService.writeToFileHandle(handle, code);
+          currentFileHandle = handle;
+          updateSaveButtonState();
+          baselineSourceCode = code;
+          renderDiff();
+          showToast(`已直接保存并绑定至本地文件：${handle.name}`);
+          return;
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+        }
+      }
+
+      FileService.downloadBlob(code, 'routes.ts', 'text/typescript');
+      showToast('已开始下载 routes.ts 文件');
+    }
+
+    async function openEnvSelector() {
+      if ('showOpenFilePicker' in window) {
+        try {
+          const [fileHandle] = await window.showOpenFilePicker({
+            types: [
+              {
+                description: '环境变量文件 (.dev.vars, .env)',
+                accept: { 'text/plain': ['.vars', '.env', '.txt', ''] }
+              }
+            ]
+          });
+          currentEnvHandle = fileHandle;
+          const file = await fileHandle.getFile();
+          const text = await file.text();
+          await loadEnvFileFromText(text);
+          return;
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+        }
+      }
+      document.getElementById('envPicker').click();
+    }
+
+    async function onEnvFileSelected(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      currentEnvHandle = null;
+      try {
+        const text = await FileService.readFile(file);
+        await loadEnvFileFromText(text);
+      } catch (err) {
+        alert('读取环境变量文件失败: ' + err.message);
+      } finally {
+        e.target.value = '';
+      }
+    }
+
+    async function loadEnvFileFromText(text) {
+      const parsed = EnvService.parse(text);
+
+      if (parsed.ROUTES_KEY !== undefined) {
+        state.env.routesKey = parsed.ROUTES_KEY;
+        state.settings.encryptionKey = parsed.ROUTES_KEY;
+        const el = document.getElementById('cfgEncryptionKey');
+        if (el) el.value = parsed.ROUTES_KEY;
+      }
+      if (parsed.AUTH_PASSWORD !== undefined) {
+        state.env.authPassword = parsed.AUTH_PASSWORD;
+        const el = document.getElementById('cfgAuthPassword');
+        if (el) el.value = parsed.AUTH_PASSWORD;
+      }
+      if (parsed.CHALLENGE_PROVIDER !== undefined) {
+        state.env.challengeProvider = parsed.CHALLENGE_PROVIDER;
+        const el = document.getElementById('cfgChallengeProvider');
+        if (el) el.value = parsed.CHALLENGE_PROVIDER;
+      }
+      if (parsed.TURNSTILE_SITE_KEY !== undefined) {
+        state.env.turnstileSiteKey = parsed.TURNSTILE_SITE_KEY;
+        const el = document.getElementById('cfgTurnstileSiteKey');
+        if (el) el.value = parsed.TURNSTILE_SITE_KEY;
+      }
+      if (parsed.TURNSTILE_SECRET_KEY !== undefined) {
+        state.env.turnstileSecretKey = parsed.TURNSTILE_SECRET_KEY;
+        const el = document.getElementById('cfgTurnstileSecretKey');
+        if (el) el.value = parsed.TURNSTILE_SECRET_KEY;
+      }
+      if (parsed.ALTCHA_HMAC_KEY !== undefined) {
+        state.env.altchaHmacKey = parsed.ALTCHA_HMAC_KEY;
+        const el = document.getElementById('cfgAltchaHmacKey');
+        if (el) el.value = parsed.ALTCHA_HMAC_KEY;
+      }
+      if (parsed.CAP_SITE_KEY !== undefined) {
+        state.env.capSiteKey = parsed.CAP_SITE_KEY;
+        const el = document.getElementById('cfgCapSiteKey');
+        if (el) el.value = parsed.CAP_SITE_KEY;
+      }
+      if (parsed.CAP_SECRET_KEY !== undefined) {
+        state.env.capSecretKey = parsed.CAP_SECRET_KEY;
+        const el = document.getElementById('cfgCapSecretKey');
+        if (el) el.value = parsed.CAP_SECRET_KEY;
+      }
+      if (parsed.CAP_ENDPOINT !== undefined) {
+        state.env.capEndpoint = parsed.CAP_ENDPOINT;
+        const el = document.getElementById('cfgCapEndpoint');
+        if (el) el.value = parsed.CAP_ENDPOINT;
+      }
+
+      // 如果提供了 ROUTES_KEY 且当前表格中有密文，自动执行解密
+      if (state.env.routesKey && state.links) {
+        let decryptedCount = 0;
+        for (const [k, v] of Object.entries(state.links)) {
+          if (typeof v === 'string' && v.startsWith('aes-gcm:')) {
+            try {
+              state.links[k] = await CryptoService.decryptData(v, state.env.routesKey);
+              decryptedCount++;
+            } catch (_) {}
+          } else if (v && typeof v.target === 'string' && v.target.startsWith('aes-gcm:')) {
+            try {
+              v.target = await CryptoService.decryptData(v.target, state.env.routesKey);
+              decryptedCount++;
+            } catch (_) {}
+          }
+        }
+        if (decryptedCount > 0) {
+          showToast(`已成功载入 .env，并自动解密了 ${decryptedCount} 条受保护短链！`);
+        } else {
+          showToast('已成功载入 .env 环境变量配置！');
+        }
+      } else {
+        showToast('已成功载入 .env 环境变量配置！');
+      }
+
+      syncChallengeControls();
+      onSettingsChange();
+    }
+
+    async function saveEnvFile() {
+      const envText = EnvService.stringify(state.env);
+
+      if (currentEnvHandle) {
+        try {
+          await FileService.writeToFileHandle(currentEnvHandle, envText);
+          showToast(`已直接写回环境变量文件：${currentEnvHandle.name}`);
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+          console.warn('写回环境变量文件失败，尝试另存:', err);
+        }
+      }
+
+      if ('showSaveFilePicker' in window) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: '.dev.vars',
+            types: [
+              {
+                description: 'Cloudflare Worker 环境变量 (.dev.vars, .env)',
+                accept: { 'text/plain': ['.vars', '.env', ''] }
+              }
+            ]
+          });
+          await FileService.writeToFileHandle(handle, envText);
+          currentEnvHandle = handle;
+          showToast(`已保存并绑定环境变量文件：${handle.name}`);
+          return;
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+        }
+      }
+
+      FileService.downloadBlob(envText, '.dev.vars', 'text/plain');
+      showToast('已开始下载 .dev.vars 环境变量文件');
+    }
+
+    function exportEnvFile() {
+      const envText = EnvService.stringify(state.env);
+      navigator.clipboard.writeText(envText).then(() => {
+        showToast('已将 .dev.vars / .env 环境变量内容复制到剪贴板！');
+      });
+    }
+
+    function loadSampleRoutes() {
+      state.links = {
+        '/': 'https://stevezmt.top',
+      };
+      state.settings.encryptAllRoutes = false;
+      const chk = document.getElementById('cfgEncryptAllRoutes');
+      if (chk) chk.checked = false;
+      syncEncryptionControls();
+      syncChallengeControls();
+      renderAll();
+      showToast('已重置为仅包含自身重定向的极简默认模板');
+    }
+
     function computeLineDiff(oldText, newText) {
       const oldLines = oldText.split('\n');
       const newLines = newText.split('\n');
@@ -1238,7 +2405,7 @@ export const config: ShortLinkConfig = {
     }
 
     async function renderDiff() {
-      const currentCode = await generateTypeScriptCodeAsync();
+      const currentCode = await ConfigCodec.generateTypeScriptCode(state);
       const diffList = computeLineDiff(baselineSourceCode, currentCode);
       const container = document.getElementById('diffContainer');
       container.innerHTML = '';
@@ -1287,6 +2454,88 @@ export const config: ShortLinkConfig = {
       document.getElementById('fullCodeBox').textContent = currentCode;
     }
 
+    function renderTable() {
+      const tbody = document.getElementById('routesTableBody');
+      tbody.innerHTML = '';
+      const entries = Object.entries(state.links);
+      document.getElementById('routeCount').textContent = entries.length;
+
+      for (const [path, val] of entries) {
+        const tr = document.createElement('tr');
+        const isString = typeof val === 'string';
+        const target = isString ? val : val.target;
+        const isTargetEncrypted = typeof target === 'string' && target.startsWith('aes-gcm:');
+
+        let badges = '';
+        if (path === '/') {
+          badges += '<span class="badge badge-success"><i class="mdui-icon material-icons" style="font-size:12px;">home</i> 根路径直达</span>';
+        } else if (path.startsWith('regex:')) {
+          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">code</i> 正则匹配</span>';
+        } else if (path.includes('/:')) {
+          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">tune</i> 动态参数 (:slug)</span>';
+        } else if (path.includes(':')) {
+          badges += '<span class="badge badge-accent"><i class="mdui-icon material-icons" style="font-size:12px;">language</i> 自定义子域名</span>';
+        }
+
+        if (isTargetEncrypted) {
+          badges += '<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">enhanced_encryption</i> 密文存储 (防转储)</span>';
+        }
+
+        if (!isString) {
+          if (val.password) {
+            badges += '<span class="badge badge-warning"><i class="mdui-icon material-icons" style="font-size:12px;">lock</i> 密码保护 (不缓存)</span>';
+          }
+          if (val.minTls) {
+            badges += `<span class="badge badge-primary"><i class="mdui-icon material-icons" style="font-size:12px;">security</i> TLS ${val.minTls}+</span>`;
+          }
+          if (val.blockBots) {
+            badges += '<span class="badge badge-danger"><i class="mdui-icon material-icons" style="font-size:12px;">block</i> 拦截爬虫</span>';
+          }
+          if (val.mobile) {
+            badges += '<span class="badge badge-success"><i class="mdui-icon material-icons" style="font-size:12px;">phone_iphone</i> 手机独立跳转</span>';
+          }
+          if (val.challenge !== undefined) {
+            if (val.challenge === false) {
+              badges += '<span class="badge badge-accent"><i class="mdui-icon material-icons" style="font-size:12px;">verified_user</i> 豁免质询</span>';
+            } else {
+              const label = val.challenge === true ? '全局质询' : val.challenge;
+              badges += `<span class="badge badge-warning"><i class="mdui-icon material-icons" style="font-size:12px;">verified_user</i> 人机质询 (${label})</span>`;
+            }
+          }
+        } else if (isTargetEncrypted && state.settings.challenge && state.settings.challenge.provider && !state.settings.encryptAllRoutes) {
+          badges += `<span class="badge badge-warning"><i class="mdui-icon material-icons" style="font-size:12px;">verified_user</i> 自动质询 (${state.settings.challenge.provider})</span>`;
+        }
+
+        const safePath = escapeHtml(path);
+        const safeTarget = escapeHtml(typeof target === 'string' ? target : JSON.stringify(target));
+        const jsEscapedPath = path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+        tr.innerHTML = `
+          <td><strong class="mono" style="color: #38bdf8;">${safePath}</strong></td>
+          <td><a href="${safeTarget}" target="_blank" rel="noopener noreferrer" style="color: #94a3b8; text-decoration: none;">${safeTarget}</a></td>
+          <td>${badges || '<span style="color: #64748b; font-size: 0.8rem;">基础跳转</span>'}</td>
+          <td style="text-align: right;">
+            <button class="btn btn-sm" onclick="editLink('${jsEscapedPath}')">
+              <i class="mdui-icon material-icons" style="font-size:15px;">edit</i>
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="deleteLink('${jsEscapedPath}')">
+              <i class="mdui-icon material-icons" style="font-size:15px;">delete</i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    function renderAll() {
+      renderTable();
+      renderDiff();
+      const fullEnvBox = document.getElementById('fullEnvBox');
+      if (fullEnvBox) {
+        fullEnvBox.textContent = EnvService.stringify(state.env);
+      }
+    }
+
     function escapeHtml(str) {
       return str
         .replace(/&/g, '&amp;')
@@ -1296,461 +2545,25 @@ export const config: ShortLinkConfig = {
 
     function switchTab(tab) {
       activeTab = tab;
-      if (tab === 'diff') {
-        document.getElementById('tabDiffBtn').classList.add('active');
-        document.getElementById('tabCodeBtn').classList.remove('active');
-        document.getElementById('diffPanel').style.display = 'block';
-        document.getElementById('codePanel').style.display = 'none';
-      } else {
-        document.getElementById('tabDiffBtn').classList.remove('active');
-        document.getElementById('tabCodeBtn').classList.add('active');
-        document.getElementById('diffPanel').style.display = 'none';
-        document.getElementById('codePanel').style.display = 'block';
+      const tabDiffBtn = document.getElementById('tabDiffBtn');
+      const tabCodeBtn = document.getElementById('tabCodeBtn');
+      const tabEnvBtn = document.getElementById('tabEnvBtn');
+      const diffPanel = document.getElementById('diffPanel');
+      const codePanel = document.getElementById('codePanel');
+      const envPanel = document.getElementById('envPanel');
+
+      if (tabDiffBtn) tabDiffBtn.classList.toggle('active', tab === 'diff');
+      if (tabCodeBtn) tabCodeBtn.classList.toggle('active', tab === 'code');
+      if (tabEnvBtn) tabEnvBtn.classList.toggle('active', tab === 'env');
+
+      if (diffPanel) diffPanel.style.display = tab === 'diff' ? 'block' : 'none';
+      if (codePanel) codePanel.style.display = tab === 'code' ? 'block' : 'none';
+      if (envPanel) envPanel.style.display = tab === 'env' ? 'block' : 'none';
+
+      if (tab === 'env') {
+        const fullEnvBox = document.getElementById('fullEnvBox');
+        if (fullEnvBox) fullEnvBox.textContent = EnvService.stringify(state.env);
       }
-    }
-
-    function renderAll() {
-      renderTable();
-      renderDiff();
-    }
-
-    // 获取当前页面所在项目目录下的 src/config 路径
-    function getConfigFolderPath() {
-      try {
-        let path = decodeURIComponent(location.pathname);
-        if (path.startsWith('/') && path.charAt(2) === ':') {
-          path = path.slice(1);
-        }
-        const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-        const dir = lastSlash !== -1 ? path.slice(0, lastSlash) : path;
-        const isWindows = path.includes(':') || navigator.userAgent.includes('Windows');
-        if (isWindows) {
-          return (dir + '/src/config').replace(/\//g, '\\');
-        }
-        return dir + '/src/config';
-      } catch (_) {
-        return 'src/config';
-      }
-    }
-
-    // 解析 TypeScript / JSON 配置文件内容
-    async function parseConfigFile(rawText) {
-      try {
-        let objStr = '';
-        const configIdx = rawText.indexOf('config');
-        if (configIdx !== -1) {
-          const start = rawText.indexOf('{', configIdx);
-          const end = rawText.lastIndexOf('}');
-          if (start !== -1 && end > start) {
-            objStr = rawText.slice(start, end + 1);
-          }
-        }
-
-        if (!objStr) {
-          const start = rawText.indexOf('{');
-          const end = rawText.lastIndexOf('}');
-          if (start !== -1 && end > start) {
-            objStr = rawText.slice(start, end + 1);
-          }
-        }
-
-        if (!objStr) {
-          throw new Error('未能从文件中识别出有效的配置对象 { ... }');
-        }
-
-        function stripComments(code) {
-          let inString = null;
-          let inSingleLineComment = false;
-          let inMultiLineComment = false;
-          let result = '';
-
-          for (let i = 0; i < code.length; i++) {
-            const ch = code[i];
-            const next = code[i + 1];
-
-            if (inSingleLineComment) {
-              if (ch === '\n') {
-                inSingleLineComment = false;
-                result += ch;
-              }
-              continue;
-            }
-
-            if (inMultiLineComment) {
-              if (ch === '*' && next === '/') {
-                inMultiLineComment = false;
-                i++;
-              }
-              continue;
-            }
-
-            if (inString) {
-              result += ch;
-              if (ch === '\\') {
-                result += next;
-                i++;
-              } else if (ch === inString) {
-                inString = null;
-              }
-              continue;
-            }
-
-            if (ch === '/' && next === '/') {
-              inSingleLineComment = true;
-              i++;
-              continue;
-            }
-            if (ch === '/' && next === '*') {
-              inMultiLineComment = true;
-              i++;
-              continue;
-            }
-
-            if (ch === "'" || ch === '"' || ch === '`') {
-              inString = ch;
-              result += ch;
-              continue;
-            }
-
-            result += ch;
-          }
-
-          return result;
-        }
-
-        let parsed;
-        try {
-          // 安全的纯文本 JSON 转换解析，绝不使用 new Function 执行外部不可信脚本
-          // 1. 基于状态机剥离注释，保护 URL (https://) 中的双斜杠不被破坏
-          let clean = stripComments(objStr);
-
-          // 2. 规范化单引号字符串为 JSON 双引号字符串，并安全转义其中的控制字符
-          clean = clean.replace(/'((?:\\.|[^'])*)'/g, (_, content) => {
-            return '"' + content
-              .replace(/"/g, '\\"')
-              .replace(/\\'/g, "'")
-              .replace(/\r/g, '\\r')
-              .replace(/\n/g, '\\n') + '"';
-          });
-
-          // 3. 规范化模板反引号字符串为 JSON 双引号字符串
-          clean = clean.replace(/`((?:\\.|[^`])*)`/g, (_, content) => {
-            return '"' + content
-              .replace(/"/g, '\\"')
-              .replace(/\\`/g, '`')
-              .replace(/\r/g, '\\r')
-              .replace(/\n/g, '\\n') + '"';
-          });
-
-          // 4. 规范化对象字面量键名: e.g. { domain: -> { "domain":
-          clean = clean.replace(/([{,]\s*)([a-zA-Z0-9_$]+)\s*:/g, '$1"$2":');
-
-          // 5. 移除 JSON 不支持的对象/数组末尾逗号
-          clean = clean.replace(/,\s*([}\]])/g, '$1');
-
-          parsed = JSON.parse(clean);
-        } catch (jsonErr) {
-          throw new Error('解析配置文件失败: 请确保配置文件为标准 JavaScript/TypeScript 对象字面量。错误: ' + jsonErr.message);
-        }
-
-        if (!parsed || typeof parsed !== 'object') {
-          throw new Error('解析出的配置对象无效');
-        }
-
-        // 智能检测是否存在加密内容（仅当有加密时才请求密码）
-        let hasEncrypted = !!(parsed.encrypted && typeof parsed.encrypted === 'string');
-        if (!hasEncrypted && parsed.links) {
-          for (const val of Object.values(parsed.links)) {
-            const target = typeof val === 'string' ? val : (val && val.target);
-            if (typeof target === 'string' && target.startsWith('aes-gcm:')) {
-              hasEncrypted = true;
-              break;
-            }
-          }
-        }
-
-        let decryptedLinks = {};
-        if (hasEncrypted) {
-          const pwd = prompt('检测到配置文件中包含加密内容！\n请输入保存在 .env 中的统一密钥 (ROUTES_KEY)：');
-          if (!pwd) {
-            alert('已跳过解密，未解密的密文内容保持原样。');
-          } else {
-            try {
-              if (parsed.encrypted) {
-                decryptedLinks = await decryptData(parsed.encrypted, pwd);
-              }
-              state.settings.encryptionKey = pwd;
-              document.getElementById('cfgEncryptionKey').value = pwd;
-
-              // 解密单目标中的 aes-gcm 密文，方便可视化编辑
-              if (parsed.links) {
-                for (const [k, v] of Object.entries(parsed.links)) {
-                  if (typeof v === 'string' && v.startsWith('aes-gcm:')) {
-                    try {
-                      parsed.links[k] = await decryptData(v, pwd);
-                    } catch (_) {}
-                  } else if (v && typeof v.target === 'string' && v.target.startsWith('aes-gcm:')) {
-                    try {
-                      v.target = await decryptData(v.target, pwd);
-                    } catch (_) {}
-                  }
-                }
-              }
-              showToast('已成功根据 .env 密钥解密配置');
-            } catch (err) {
-              alert('解密失败：密码错误或数据已损坏！');
-            }
-          }
-        }
-
-        // 设置为基准
-        baselineSourceCode = rawText;
-
-        if (parsed.settings) {
-          state.settings.domain = parsed.settings.domain || '';
-          state.settings.salt = parsed.settings.salt || '';
-          state.settings.notFoundUrl = parsed.settings.notFoundUrl || 'https://stevezmt.top/404?from=${FULL_URL}';
-          state.settings.notFoundMode = parsed.settings.notFoundMode || 'redirect';
-          if (parsed.settings.defaultUtm) {
-            state.settings.defaultUtm = { ...parsed.settings.defaultUtm };
-          }
-        }
-
-        state.links = {
-          ...(parsed.links || {}),
-          ...decryptedLinks,
-        };
-
-        // 识别是否属于全表“加密路由”配置
-        const hasEncryptedPayload = !!(parsed.encrypted && typeof parsed.encrypted === 'string');
-        state.settings.encryptAllRoutes = hasEncryptedPayload;
-        const encryptAllCheckbox = document.getElementById('cfgEncryptAllRoutes');
-        if (encryptAllCheckbox) encryptAllCheckbox.checked = hasEncryptedPayload;
-        syncEncryptionControls();
-
-        // 更新 UI 控件
-        document.getElementById('cfgDomain').value = state.settings.domain;
-        document.getElementById('cfgSalt').value = state.settings.salt || '';
-        document.getElementById('cfg404').value = state.settings.notFoundUrl;
-        document.getElementById('cfgUtmSource').value = state.settings.defaultUtm?.utm_source || '';
-        document.getElementById('cfgUtmMedium').value = state.settings.defaultUtm?.utm_medium || '';
-
-        renderAll();
-        showToast('已成功读取并载入配置');
-      } catch (err) {
-        alert('读取解析配置文件失败: ' + err.message);
-      }
-    }
-
-    // 打开本地文件选择器
-    async function openFileSelector() {
-      const configPath = getConfigFolderPath();
-      try {
-        await navigator.clipboard.writeText(configPath);
-        showToast(`已复制路径：${configPath} (可直接在文件弹窗地址栏粘贴)`);
-      } catch (_) {}
-
-      if ('showOpenFilePicker' in window) {
-        try {
-          const [fileHandle] = await window.showOpenFilePicker({
-            types: [
-              {
-                description: 'TypeScript/JavaScript Config',
-                accept: { 'text/plain': ['.ts', '.js', '.json'], 'text/typescript': ['.ts'] }
-              }
-            ]
-          });
-          currentFileHandle = fileHandle;
-          const file = await fileHandle.getFile();
-          const text = await file.text();
-          baselineSourceCode = text;
-          updateSaveButtonState();
-          await parseConfigFile(text);
-          return;
-        } catch (e) {
-          if (e.name === 'AbortError') return;
-        }
-      }
-      document.getElementById('filePicker').click();
-    }
-
-    function onFileSelected(e) {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      currentFileHandle = null;
-      document.getElementById('baselineSourceName').textContent = file.name;
-      updateSaveButtonState();
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        baselineSourceCode = ev.target.result;
-        await parseConfigFile(ev.target.result);
-      };
-      reader.readAsText(file);
-      e.target.value = '';
-    }
-
-    // 拖拽支持（支持 Chromium 文件句柄直接抓取）
-    window.addEventListener('dragover', (e) => e.preventDefault());
-    window.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      if (e.dataTransfer.items && e.dataTransfer.items[0] && 'getAsFileSystemHandle' in e.dataTransfer.items[0]) {
-        try {
-          const handle = await e.dataTransfer.items[0].getAsFileSystemHandle();
-          if (handle && handle.kind === 'file') {
-            currentFileHandle = handle;
-            const file = await handle.getFile();
-            updateSaveButtonState();
-            const text = await file.text();
-            baselineSourceCode = text;
-            await parseConfigFile(text);
-            return;
-          }
-        } catch (_) {}
-      }
-
-      const files = e.dataTransfer.files;
-      if (files && files.length > 0) {
-        const file = files[0];
-        currentFileHandle = null;
-        document.getElementById('baselineSourceName').textContent = file.name;
-        updateSaveButtonState();
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          baselineSourceCode = ev.target.result;
-          await parseConfigFile(ev.target.result);
-        };
-        reader.readAsText(file);
-      }
-    });
-
-    async function revertToBaseline() {
-      if (confirm('确认放弃当前所有未保存的修改，还原为基准配置吗？')) {
-        await parseConfigFile(baselineSourceCode);
-        showToast('已还原为原配置');
-      }
-    }
-
-    async function checkEncryptionKeyPromptAsync() {
-      if (state.settings.encryptAllRoutes && !state.settings.encryptionKey) {
-        const key = prompt('当前已开启“加密路由”，请输入用于加密全表的统一密钥 (ROUTES_KEY)：');
-        if (key && key.trim()) {
-          state.settings.encryptionKey = key.trim();
-          document.getElementById('cfgEncryptionKey').value = key.trim();
-          renderAll();
-        } else {
-          showToast('未输入密钥，将按未加密的明文表生成配置');
-        }
-      }
-    }
-
-    async function exportTypeScript() {
-      await checkEncryptionKeyPromptAsync();
-      const code = await generateTypeScriptCodeAsync();
-      navigator.clipboard.writeText(code).then(() => {
-        showToast('已复制 routes.ts 到剪贴板');
-      });
-    }
-
-    // 直接保存修改到本地文件（核心实现：File System Access API 直接写回）
-    async function saveConfigFile() {
-      await checkEncryptionKeyPromptAsync();
-      const code = await generateTypeScriptCodeAsync();
-
-      // 1. 若当前已通过读取持有本地文件句柄，直接原地修改写回！
-      if (currentFileHandle) {
-        try {
-          if (currentFileHandle.queryPermission) {
-            const perm = await currentFileHandle.queryPermission({ mode: 'readwrite' });
-            if (perm !== 'granted') {
-              const reqPerm = await currentFileHandle.requestPermission({ mode: 'readwrite' });
-              if (reqPerm !== 'granted') {
-                throw new Error('未获得对本地文件的写回权限');
-              }
-            }
-          }
-          const writable = await currentFileHandle.createWritable();
-          await writable.write(code);
-          await writable.close();
-
-          baselineSourceCode = code;
-          renderDiff();
-          showToast(`已直接修改并写回本地文件：${currentFileHandle.name}`);
-          return;
-        } catch (err) {
-          if (err.name === 'AbortError') return;
-          console.warn('直接写回本地文件失败，尝试另存或下载:', err);
-          showToast('直接写回遇到权限受限，正在调起另存弹窗...');
-        }
-      }
-
-      // 2. 若当前无句柄但浏览器支持 showSaveFilePicker，调起保存并关联句柄
-      if ('showSaveFilePicker' in window) {
-        try {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: 'routes.ts',
-            types: [
-              {
-                description: 'TypeScript Route Configuration',
-                accept: { 'text/typescript': ['.ts'], 'text/plain': ['.ts'] }
-              }
-            ]
-          });
-          const writable = await handle.createWritable();
-          await writable.write(code);
-          await writable.close();
-
-          currentFileHandle = handle;
-          updateSaveButtonState();
-          baselineSourceCode = code;
-          renderDiff();
-          showToast(`已直接保存并绑定至本地文件：${handle.name}`);
-          return;
-        } catch (e) {
-          if (e.name === 'AbortError') return;
-        }
-      }
-
-      // 3. 最终兜底：传统浏览器下载 Blob
-      downloadConfigFileFallback(code);
-    }
-
-    function downloadConfigFileFallback(code) {
-      const blob = new Blob([code], { type: 'text/typescript' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'routes.ts';
-      a.click();
-      showToast('已开始下载 routes.ts 文件 (当前环境不支持直接本地写回)');
-    }
-
-    async function downloadConfigFile() {
-      // 保持向后兼容调用
-      await saveConfigFile();
-    }
-
-    // 绑定快捷键 Ctrl+S / Cmd+S 触发直接保存
-    window.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        saveConfigFile();
-      }
-    });
-
-    function exportEnvFile() {
-      const key = state.settings.encryptionKey;
-      if (!key) {
-        showToast('未配置对称密钥，请先在上方设置或加密链接！');
-        return;
-      }
-      const envText = `# Cloudflare Worker 对称解密密钥 (.dev.vars / .env)
-# 放在短链接项目根目录下供本地开发 (wrangler dev) 与 Worker 读取
-# 线上部署请执行: npx wrangler secret put ROUTES_KEY
-
-ROUTES_KEY=${key}
-`;
-      navigator.clipboard.writeText(envText).then(() => {
-        showToast('已将 .dev.vars / .env 内容复制到剪贴板！');
-      });
     }
 
     function showToast(msg) {
@@ -1760,21 +2573,79 @@ ROUTES_KEY=${key}
       setTimeout(() => toast.classList.remove('show'), 2500);
     }
 
-    function loadSampleRoutes() {
-      // 仅保留自身被访问时重定向的目标地址
-      state.links = {
-        '/': 'https://stevezmt.top',
-      };
-      state.settings.encryptAllRoutes = false;
-      const chk = document.getElementById('cfgEncryptAllRoutes');
-      if (chk) chk.checked = false;
-      syncEncryptionControls();
-      renderAll();
-      showToast('已重置为仅包含自身重定向的极简默认模板');
-    }
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      const files = e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+      const file = files[0];
+      const nameLower = file.name.toLowerCase();
 
-    // 初始化同步与渲染
+      if (nameLower.endsWith('.csv')) {
+        try {
+          const text = await FileService.readFile(file);
+          await importCsvText(text, file.name);
+        } catch (err) {
+          alert('读取 CSV 失败: ' + err.message);
+        }
+        return;
+      }
+
+      if (nameLower.endsWith('.env') || nameLower.endsWith('.vars') || nameLower === '.dev.vars' || nameLower.includes('.env.')) {
+        if (e.dataTransfer.items && e.dataTransfer.items[0] && 'getAsFileSystemHandle' in e.dataTransfer.items[0]) {
+          try {
+            const handle = await e.dataTransfer.items[0].getAsFileSystemHandle();
+            if (handle && handle.kind === 'file') {
+              currentEnvHandle = handle;
+              const text = await (await handle.getFile()).text();
+              await loadEnvFileFromText(text);
+              return;
+            }
+          } catch (_) {}
+        }
+        try {
+          const text = await FileService.readFile(file);
+          await loadEnvFileFromText(text);
+        } catch (err) {
+          alert('读取环境变量文件失败: ' + err.message);
+        }
+        return;
+      }
+
+      if (e.dataTransfer.items && e.dataTransfer.items[0] && 'getAsFileSystemHandle' in e.dataTransfer.items[0]) {
+        try {
+          const handle = await e.dataTransfer.items[0].getAsFileSystemHandle();
+          if (handle && handle.kind === 'file') {
+            currentFileHandle = handle;
+            const text = await (await handle.getFile()).text();
+            updateSaveButtonState();
+            await loadConfigFileFromText(text);
+            return;
+          }
+        } catch (_) {}
+      }
+
+      currentFileHandle = null;
+      document.getElementById('baselineSourceName').textContent = file.name;
+      updateSaveButtonState();
+      try {
+        const text = await FileService.readFile(file);
+        await loadConfigFileFromText(text);
+      } catch (err) {
+        alert('读取配置文件失败: ' + err.message);
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveConfigFile();
+      }
+    });
+
+    // 页面初始化同步与渲染
     syncEncryptionControls();
+    syncChallengeControls();
     renderAll();
   </script>
 </body>

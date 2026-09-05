@@ -1,4 +1,24 @@
 # Wrangler 本地开发环境变量文件 (.dev.vars)
-# wrangler dev 会自动加载此文件中的变量与密钥
+# 本地调试 (wrangler dev) 时自动加载此文件中的变量与密钥
+# 线上部署请使用: npx wrangler secret put KEY_NAME
 
+# 1. 统一路由对称加解密密钥 (必填)
 ROUTES_KEY=stevezmt_secure_pass_2026
+
+# 2. 独立访客访问主密码 (可选，留空则默认复用 ROUTES_KEY)
+# AUTH_PASSWORD=custom_visitor_password
+
+# 3. 人机质询与防爬验证配置 (可选，支持 turnstile / altcha / cap)
+# CHALLENGE_PROVIDER=turnstile
+
+# Cloudflare Turnstile (推荐 Cloudflare 原生方案)
+# TURNSTILE_SITE_KEY=0x4AAAAAAAYourSiteKey
+# TURNSTILE_SECRET_KEY=0x4AAAAAAAYourSecretKey
+
+# Altcha (原生 Web Crypto PoW，0外部请求，HMAC 私钥留空默认复用 ROUTES_KEY)
+# ALTCHA_HMAC_KEY=altcha_hmac_secret_at_least_32_characters_long
+
+# Cap (trycap.dev 开源验证码：默认内置 Serverless 引擎，零服务器/零运维；亦可对接外部自建端点)
+# CAP_SECRET_KEY=cap_secret_key_here  # 留空自动借用 ROUTES_KEY
+# CAP_SITE_KEY=cap_site_key_here      # 留空自动使用内置默认值
+# CAP_ENDPOINT=https://cap.yourdomain.com  # 留空自动启用 Worker 内置引擎 (零服务器)；填入则转发走外部自建服务

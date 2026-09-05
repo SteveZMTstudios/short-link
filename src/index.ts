@@ -42,6 +42,12 @@ import {
   COMMON_BOTS,
 } from './rules/predicates';
 import { decryptData, isEncryptedPayload } from './utils/crypto';
+import {
+  shouldChallengeRoute,
+  handleChallengeFlow,
+  hasChallengeConfigured,
+  handleBuiltinChallengeEndpoints,
+} from './challenge';
 
 /**
  * Resolves master encryption/auth key from environment with unified fallback ordering.
@@ -85,14 +91,21 @@ export function normalizeConfig(
   // 1. Process declarative links mapping
   for (const [key, val] of Object.entries(mergedLinks)) {
     const pattern = normalizePattern(key, baseDomain);
+    const isFromRawLinks =
+      shortConfig.links !== undefined &&
+      Object.prototype.hasOwnProperty.call(shortConfig.links, key);
 
     if (typeof val === 'string') {
+      const isIndividuallyEncrypted = isFromRawLinks && isEncryptedPayload(val);
       routes.push({
         pattern,
         target: val,
         utm: defaultUtm,
+        isIndividuallyEncrypted,
       });
     } else if (val && typeof val === 'object') {
+      const isIndividuallyEncrypted =
+        isFromRawLinks && isEncryptedPayload(val.target);
       const rules: Rule[] = [];
 
       // Declarative: min TLS version
@@ -155,6 +168,8 @@ export function normalizeConfig(
         utm: { ...defaultUtm, ...val.utm },
         auth,
         rules: rules.length > 0 ? rules : undefined,
+        challenge: val.challenge,
+        isIndividuallyEncrypted,
       });
     }
   }
@@ -162,9 +177,11 @@ export function normalizeConfig(
   // 2. Append legacy/direct RouteDefinition array
   if (shortConfig.routes && Array.isArray(shortConfig.routes)) {
     for (const r of shortConfig.routes) {
+      const isIndividuallyEncrypted = isEncryptedPayload(r.target);
       routes.push({
         ...r,
         pattern: normalizePattern(r.pattern, baseDomain),
+        isIndividuallyEncrypted: r.isIndividuallyEncrypted ?? isIndividuallyEncrypted,
       });
     }
   }
@@ -182,6 +199,7 @@ export function normalizeConfig(
       target: notFoundTarget,
       mode: notFoundMode,
     },
+    settings,
   };
 }
 
@@ -189,6 +207,7 @@ interface ResolvedRuntimeConfig {
   appConfig: AppConfig;
   compiledRoutes: CompiledRoute[];
   settings?: SettingsConfig;
+  isFullTableEncrypted?: boolean;
 }
 
 export function createDefault404Response(): Response {
@@ -312,11 +331,13 @@ export function createShortLinkHandler(
         appConfig = normalizeConfig(userConfig);
       }
 
+      const isFullTableEncrypted = !!userConfig.encrypted;
       const compiledRoutes = compileRouteTable(appConfig.routes);
       runtimeConfig = {
         appConfig,
         compiledRoutes,
         settings: userConfig.settings,
+        isFullTableEncrypted,
       };
 
       if (isStatic) {
@@ -325,6 +346,19 @@ export function createShortLinkHandler(
     }
 
     const { appConfig, compiledRoutes, settings } = runtimeConfig;
+
+    // 1.5 Built-in Serverless Challenge Endpoints (Cap & Altcha, 0 external servers)
+    if (url.pathname.startsWith('/_challenge/')) {
+      const challengeRes = await handleBuiltinChallengeEndpoints(
+        request,
+        url,
+        settings,
+        env
+      );
+      if (challengeRes) {
+        return challengeRes;
+      }
+    }
 
     // 2. Match route using pre-compiled route table (0 regex recompilation on request)
     const matched = findMatchingCompiledRoute(compiledRoutes, url);
@@ -398,6 +432,31 @@ export function createShortLinkHandler(
       }
     }
 
+    // 5.5 Human Verification / Proof-of-Work Challenge Protection
+    let clearanceSetCookie: string | undefined;
+    const isChallengeConfigured = hasChallengeConfigured(settings, env);
+    const requiresChallenge = shouldChallengeRoute(
+      matchedRoute,
+      runtimeConfig.isFullTableEncrypted,
+      isChallengeConfigured
+    );
+
+    if (requiresChallenge) {
+      const challengeResult = await handleChallengeFlow(
+        request,
+        url,
+        matchedRoute,
+        settings,
+        env
+      );
+      if (!challengeResult.passed) {
+        return challengeResult.response!;
+      }
+      if (challengeResult.setCookieHeader) {
+        clearanceSetCookie = challengeResult.setCookieHeader;
+      }
+    }
+
     // 6. Resolve target URL
     let rawTarget =
       typeof matchedRoute.target === 'function'
@@ -441,9 +500,8 @@ export function createShortLinkHandler(
       return handleNotFound(appConfig, url, request);
     }
 
-    // Only routes with an access password (auth) must NOT be cached.
-    // ROUTE_KEY protects routing rules from being dumped in one click; encrypted targets without password remain edge-cacheable.
-    const isSensitive = !!matchedRoute.auth;
+    // Only routes with an access password (auth) or challenge protection must NOT be cached.
+    const isSensitive = !!matchedRoute.auth || requiresChallenge;
 
     // 8. Return 3-tier redirect response
     // RFC 7231 Section 6.4.4: 303 See Other ensures browser POST redirect switches to GET
@@ -452,10 +510,15 @@ export function createShortLinkHandler(
         ? 303
         : (matchedRoute.redirectStatus || 302);
 
+    const extraHeaders: Record<string, string> = {};
+    if (clearanceSetCookie) {
+      extraHeaders['Set-Cookie'] = clearanceSetCookie;
+    }
+
     return createTieredRedirectResponse(
       finalDestination,
       redirectStatus,
-      undefined,
+      extraHeaders,
       isSensitive
     );
   };
