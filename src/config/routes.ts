@@ -28,6 +28,8 @@ export const config: ShortLinkConfig = {
     ethcalc: 'https://link.stevezmt.top/ethtool-advertise-bitmap-calc/index.html',
     'blog/*': 'https://blog.stevezmt.top/$1',
     rss: 'https://blog.stevezmt.top/atom.xml',
-    vcard: 'aes-gcm:v1:0SRJ9+OmuOyT9jLWBrVT/+cwYCdWQYYKuTVaQPMw59SYfUBYpJxaVWK6rYTZJvn17y/sMRpxDDx9xRVVNDwunsJ6+7I59dqE+GKjrBCutSqutFJgFFNkLwW8Ls3/',
+    vcard: 'aes-gcm:v1:xE5qK38jlDE6/NKb5mJW+Og5PVshMwFrMQcRCM9xV0UlwKwzAD+94BgCGdwVG15KhIIJCf00Pg9HBBtMKdNyCJ+O0U5W8Xmpjv1nE3fDuOfOEZXxqyHJ7DXIKMFv',
+    blog: 'https://blog.stevezmt.top/',
+    phi: 'https://stevezmt.top/Phigros-history',
   },
 };
